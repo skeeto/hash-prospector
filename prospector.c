@@ -533,11 +533,12 @@ score32_full(uint32_t (*f)(uint32_t))
 static void
 usage(FILE *f)
 {
-    fprintf(f, "usage: prospector [-8hs] [-r n:m]\n");
-    fprintf(f, "  -8      Generate 64-bit hash functions (default: 32-bit)\n");
-    fprintf(f, "  -h      Print this help message\n");
-    fprintf(f, "  -s      Don't use large constants\n");
-    fprintf(f, "  -r n:m  Use between n and m operations (default: 3:6)\n");
+    fprintf(f, "usage: prospector [-8hs] [-r n:m] [-t x]\n");
+    fprintf(f, " -8      Generate 64-bit hash functions (default: 32-bit)\n");
+    fprintf(f, " -h      Print this help message\n");
+    fprintf(f, " -r n:m  Use between n and m operations (default: 3:6)\n");
+    fprintf(f, " -s      Don't use large constants\n");
+    fprintf(f, " -t x    Initial score threshold (default: 16.0)\n");
 }
 
 int
@@ -551,10 +552,13 @@ main(int argc, char **argv)
     uint64_t rng[2] = {0x2a2bc037b59ff989, 0x6d7db86fa2f632ca};
 
     int option;
-    while ((option = getopt(argc, argv, "8hsr:")) != -1) {
+    while ((option = getopt(argc, argv, "8hr:st:")) != -1) {
         switch (option) {
             case '8':
                 flags |= F_U64;
+                break;
+            case 'h': usage(stdout);
+                exit(EXIT_SUCCESS);
                 break;
             case 'r':
                 if (sscanf(optarg, "%d:%d", &min, &max) != 2 ||
@@ -567,9 +571,8 @@ main(int argc, char **argv)
             case 's':
                 flags |= F_TINY;
                 break;
-            case 'h':
-                usage(stdout);
-                exit(EXIT_SUCCESS);
+            case 't':
+                best = strtod(optarg, 0);
                 break;
             default:
                 usage(stderr);
