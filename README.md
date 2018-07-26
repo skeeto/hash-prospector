@@ -37,21 +37,39 @@ mosquito32(uint32_t x)
     return x;
 }
 
-/* Avalanche score = 1.51
+/* Avalanche score = 1.1875
  * Very effective avalanche
- * 3.3 billion hashes / second (Haswell)
+ * 4 billion hashes / second (Haswell)
  */
 uint32_t
 skeeto32(uint32_t x)
 {
-    x  = ~x;
-    x ^= x >> 2;
-    x += x << 21;
-    x ^= x >> 15;
-    x ^= x << 5;
-    x ^= x >> 9;
+    x = ~x;
+    x ^= x << 16;
+    x ^= x >> 1;
     x ^= x << 13;
+    x ^= x >> 4;
+    x ^= x >> 12;
+    x ^= x >> 2;
     return x;
+}
+```
+
+The first can be converted into an excellent string hash function:
+
+```c
+static uint32_t
+mosquito32s(const void *buf, size_t len, uint32_t key)
+{
+    uint32_t hash = key;
+    const unsigned char *p = buf;
+    for (size_t i = 0; i < len; i++) {
+        hash += p[i];
+        hash ^= hash >> 16;
+        hash *= UINT32_C(0xb03a22b3);
+        hash ^= hash >> 10;
+    }
+    return hash;
 }
 ```
 
