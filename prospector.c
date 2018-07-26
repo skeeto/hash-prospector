@@ -9,6 +9,8 @@
 #include <unistd.h>
 #include <sys/mman.h>
 
+#define countof(a) ((int)(sizeof(a) / sizeof(0[a])))
+
 static uint64_t
 xoroshiro128plus(uint64_t s[2])
 {
@@ -44,21 +46,38 @@ enum hf_type {
     HF64_SUBL,
 };
 
+static const char hf_names[][8] = {
+    [HF32_XOR]  = "32XOR",
+    [HF32_MUL]  = "32MUL",
+    [HF32_ADD]  = "32ADD",
+    [HF32_ROT]  = "32ROT",
+    [HF32_NOT]  = "32NOT",
+    [HF32_XORL] = "32XORL",
+    [HF32_XORR] = "32XORR",
+    [HF32_ADDL] = "32ADDL",
+    [HF32_SUBL] = "32SUBL",
+    [HF64_XOR]  = "64XOR",
+    [HF64_MUL]  = "64MUL",
+    [HF64_ADD]  = "64ADD",
+    [HF64_ROT]  = "64ROT",
+    [HF64_NOT]  = "64NOT",
+    [HF64_XORL] = "64XORL",
+    [HF64_XORR] = "64XORR",
+    [HF64_ADDL] = "64ADDL",
+    [HF64_SUBL] = "64SUBL",
+};
+
 struct hf_op {
     enum hf_type type;
     uint64_t constant;
 };
 
-#define F_U64     (1 << 0)
-#define F_TINY    (1 << 1)  // don't use big constants
-
+/* Randomize the constants of the given hash operation.
+ */
 static void
-hf_gen(struct hf_op *op, uint64_t s[2], int flags)
+hf_randomize(struct hf_op *op, uint64_t s[2])
 {
     uint64_t r = xoroshiro128plus(s);
-    int min = flags & F_TINY ? 3 : 0;
-    op->type = (r % (9 - min)) + min + (flags & F_U64 ? 9 : 0);
-    r >>= 4;
     switch (op->type) {
         case HF32_NOT:
         case HF64_NOT:
@@ -93,6 +112,18 @@ hf_gen(struct hf_op *op, uint64_t s[2], int flags)
             op->constant = 1 + r % 63;
             break;
     }
+}
+
+#define F_U64     (1 << 0)
+#define F_TINY    (1 << 1)  // don't use big constants
+
+static void
+hf_gen(struct hf_op *op, uint64_t s[2], int flags)
+{
+    uint64_t r = xoroshiro128plus(s);
+    int min = flags & F_TINY ? 3 : 0;
+    op->type = (r % (9 - min)) + min + (flags & F_U64 ? 9 : 0);
+    hf_randomize(op, s);
 }
 
 /* Return 1 if these operations may be adjacent
@@ -134,6 +165,15 @@ hf_genfunc(struct hf_op *ops, int n, int flags, uint64_t s[2])
             hf_gen(ops + i, s, flags);
         } while (!hf_type_valid(ops[i - 1].type, ops[i].type));
     }
+}
+
+/* Randomize the parameters of the given functoin.
+ */
+static void
+hf_randfunc(struct hf_op *ops, int n, uint64_t s[2])
+{
+    for (int i = 0; i < n; i++)
+        hf_randomize(ops + i, s);
 }
 
 static void
@@ -534,25 +574,60 @@ static void
 usage(FILE *f)
 {
     fprintf(f, "usage: prospector [-8hs] [-r n:m] [-t x]\n");
-    fprintf(f, " -8      Generate 64-bit hash functions (default: 32-bit)\n");
-    fprintf(f, " -h      Print this help message\n");
-    fprintf(f, " -r n:m  Use between n and m operations (default: 3:6)\n");
-    fprintf(f, " -s      Don't use large constants\n");
-    fprintf(f, " -t x    Initial score threshold (default: 16.0)\n");
+    fprintf(f, " -8          Generate 64-bit hash functions [32]\n");
+    fprintf(f, " -h          Print this help message\n");
+    fprintf(f, " -p pattern  Search only a given pattern\n");
+    fprintf(f, " -r n:m      Use between n and m operations [3:6]\n");
+    fprintf(f, " -s          Don't use large constants\n");
+    fprintf(f, " -t x        Initial score threshold [16.0]\n");
+}
+
+static int
+parse_template(struct hf_op *ops, int n, char *template)
+{
+    int c = 0;
+    int offset;
+
+    char *tok = strtok(template, ",");
+    if (!strcmp(tok, "32")) {
+        offset = 0;
+    } else if (!strcmp(tok, "64")) {
+        offset = HF64_XOR;
+    } else {
+        return 0;
+    }
+
+    for (tok = strtok(0, ","); tok; tok = strtok(0, ",")) {
+        if (c == n) return 0;
+        int found = 0;
+        for (int i = 0; i < countof(hf_names); i++) {
+            if (!strcmp(hf_names[i] + 2, tok)) {
+                found = 1;
+                ops[c++].type = i + offset;
+                break;
+            }
+        }
+        if (!found)
+            return 0;
+    }
+    return c;
 }
 
 int
 main(int argc, char **argv)
 {
+    int nops;
     int min = 3;
     int max = 6;
     int flags = 0;
     double best = 16.0;
+    char *template = 0;
+    struct hf_op ops[32];
     void *buf = execbuf_alloc();
     uint64_t rng[2] = {0x2a2bc037b59ff989, 0x6d7db86fa2f632ca};
 
     int option;
-    while ((option = getopt(argc, argv, "8hr:st:")) != -1) {
+    while ((option = getopt(argc, argv, "8hr:st:p:")) != -1) {
         switch (option) {
             case '8':
                 flags |= F_U64;
@@ -560,9 +635,12 @@ main(int argc, char **argv)
             case 'h': usage(stdout);
                 exit(EXIT_SUCCESS);
                 break;
+            case 'p':
+                template = optarg;
+                break;
             case 'r':
                 if (sscanf(optarg, "%d:%d", &min, &max) != 2 ||
-                    min < 1 || max > 32 || min > max) {
+                    min < 1 || max > countof(ops) || min > max) {
                     fprintf(stderr, "prospector: invalid range (-r): %s\n",
                             optarg);
                     exit(EXIT_FAILURE);
@@ -587,15 +665,26 @@ main(int argc, char **argv)
         fclose(urandom);
     }
 
+    if (template) {
+        nops = parse_template(ops, countof(ops), template);
+        if (!nops) {
+            fprintf(stderr, "prospector: invalid template\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+
     for (;;) {
         /* Generate */
-        struct hf_op ops[32];
-        int n = min + xoroshiro128plus(rng) % (max - min + 1);
-        hf_genfunc(ops, n, flags, rng);
+        if (template) {
+            hf_randfunc(ops, nops, rng);
+        } else {
+            nops = min + xoroshiro128plus(rng) % (max - min + 1);
+            hf_genfunc(ops, nops, flags, rng);
+        }
 
         /* Evaluate */
         double score;
-        hf_compile(ops, n, buf);
+        hf_compile(ops, nops, buf);
         execbuf_lock(buf);
         if (flags & F_U64) {
             uint64_t (*hash)(uint64_t) = (void *)buf;
@@ -609,7 +698,7 @@ main(int argc, char **argv)
         /* Compare */
         if (score < best) {
             printf("// score = %.17g\n", score);
-            hf_printfunc(ops, n, stdout);
+            hf_printfunc(ops, nops, stdout);
             fflush(stdout);
             best = score;
         }
