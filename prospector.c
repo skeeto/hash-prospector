@@ -47,24 +47,24 @@ enum hf_type {
 };
 
 static const char hf_names[][8] = {
-    [HF32_XOR]  = "32XOR",
-    [HF32_MUL]  = "32MUL",
-    [HF32_ADD]  = "32ADD",
-    [HF32_ROT]  = "32ROT",
-    [HF32_NOT]  = "32NOT",
-    [HF32_XORL] = "32XORL",
-    [HF32_XORR] = "32XORR",
-    [HF32_ADDL] = "32ADDL",
-    [HF32_SUBL] = "32SUBL",
-    [HF64_XOR]  = "64XOR",
-    [HF64_MUL]  = "64MUL",
-    [HF64_ADD]  = "64ADD",
-    [HF64_ROT]  = "64ROT",
-    [HF64_NOT]  = "64NOT",
-    [HF64_XORL] = "64XORL",
-    [HF64_XORR] = "64XORR",
-    [HF64_ADDL] = "64ADDL",
-    [HF64_SUBL] = "64SUBL",
+    [HF32_XOR]  = "32xor",
+    [HF32_MUL]  = "32mul",
+    [HF32_ADD]  = "32add",
+    [HF32_ROT]  = "32rot",
+    [HF32_NOT]  = "32not",
+    [HF32_XORL] = "32xorl",
+    [HF32_XORR] = "32xorr",
+    [HF32_ADDL] = "32addl",
+    [HF32_SUBL] = "32subl",
+    [HF64_XOR]  = "64xor",
+    [HF64_MUL]  = "64mul",
+    [HF64_ADD]  = "64add",
+    [HF64_ROT]  = "64rot",
+    [HF64_NOT]  = "64not",
+    [HF64_XORL] = "64xorl",
+    [HF64_XORR] = "64xorr",
+    [HF64_ADDL] = "64addl",
+    [HF64_SUBL] = "64subl",
 };
 
 struct hf_op {
@@ -583,21 +583,12 @@ usage(FILE *f)
 }
 
 static int
-parse_template(struct hf_op *ops, int n, char *template)
+parse_template(struct hf_op *ops, int n, char *template, int flags)
 {
     int c = 0;
-    int offset;
+    int offset = flags & F_U64 ? HF64_XOR : 0;
 
-    char *tok = strtok(template, ",");
-    if (!strcmp(tok, "32")) {
-        offset = 0;
-    } else if (!strcmp(tok, "64")) {
-        offset = HF64_XOR;
-    } else {
-        return 0;
-    }
-
-    for (tok = strtok(0, ","); tok; tok = strtok(0, ",")) {
+    for (char *tok = strtok(template, ","); tok; tok = strtok(0, ",")) {
         if (c == n) return 0;
         int found = 0;
         for (int i = 0; i < countof(hf_names); i++) {
@@ -666,7 +657,7 @@ main(int argc, char **argv)
     }
 
     if (template) {
-        nops = parse_template(ops, countof(ops), template);
+        nops = parse_template(ops, countof(ops), template, flags);
         if (!nops) {
             fprintf(stderr, "prospector: invalid template\n");
             exit(EXIT_FAILURE);
