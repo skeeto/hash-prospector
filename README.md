@@ -22,7 +22,7 @@ So far I've used prospector to discover these two high quality 32-bit
 integer hash functions:
 
 ```c
-/* Avalanche score = 1.83
+/* Avalanche score = 1.67
  * Compiles to only 23 bytes on x86-64
  * High avalanche
  * 6 billion hashes / second (Haswell)
@@ -32,8 +32,8 @@ mosquito32(uint32_t x)
 {
     x  = ~x;
     x ^= x >> 16;
-    x *= UINT32_C(0xb03a22b3);
-    x ^= x >> 10;
+    x *= UINT32_C(0xdce6558f);
+    x ^= x >> 9;
     return x;
 }
 
@@ -58,6 +58,9 @@ skeeto32(uint32_t x)
 The first can be converted into an excellent string hash function:
 
 ```c
+/* Around 2%-4% slower than MurmurHash3 (Haswell)
+ * Equivalent collision properties as MurmurHash3 for UTF-8 strings
+ */
 static uint32_t
 mosquito32s(const void *buf, size_t len, uint32_t key)
 {
@@ -66,8 +69,8 @@ mosquito32s(const void *buf, size_t len, uint32_t key)
     for (size_t i = 0; i < len; i++) {
         hash += p[i];
         hash ^= hash >> 16;
-        hash *= UINT32_C(0xb03a22b3);
-        hash ^= hash >> 10;
+        hash *= UINT32_C(0xdce6558f);
+        hash ^= hash >> 9;
     }
     return hash;
 }
