@@ -67,9 +67,11 @@ static const char hf_names[][8] = {
     [HF64_SUBL] = "64subl",
 };
 
+#define FOP_LOCKED  (1 << 0)
 struct hf_op {
     enum hf_type type;
     uint64_t constant;
+    int flags;
 };
 
 /* Randomize the constants of the given hash operation.
@@ -173,7 +175,8 @@ static void
 hf_randfunc(struct hf_op *ops, int n, uint64_t s[2])
 {
     for (int i = 0; i < n; i++)
-        hf_randomize(ops + i, s);
+        if (!(ops[i].flags & FOP_LOCKED))
+            hf_randomize(ops + i, s);
 }
 
 static void
@@ -590,6 +593,38 @@ usage(FILE *f)
 }
 
 static int
+parse_operand(struct hf_op *op, char *buf)
+{
+    op->flags |= FOP_LOCKED;
+    switch (op->type) {
+        case HF32_NOT:
+        case HF64_NOT:
+            return 0;
+        case HF32_XOR:
+        case HF32_MUL:
+        case HF32_ADD:
+        case HF32_ROT:
+        case HF64_XOR:
+        case HF64_MUL:
+        case HF64_ADD:
+        case HF64_ROT:
+            op->constant = strtoull(buf, 0, 16);
+            return 1;
+        case HF32_XORL:
+        case HF32_XORR:
+        case HF32_ADDL:
+        case HF32_SUBL:
+        case HF64_XORL:
+        case HF64_XORR:
+        case HF64_ADDL:
+        case HF64_SUBL:
+            op->constant = atoi(buf);
+            return 1;
+    }
+    return 0;
+}
+
+static int
 parse_template(struct hf_op *ops, int n, char *template, int flags)
 {
     int c = 0;
@@ -598,15 +633,22 @@ parse_template(struct hf_op *ops, int n, char *template, int flags)
     for (char *tok = strtok(template, ","); tok; tok = strtok(0, ",")) {
         if (c == n) return 0;
         int found = 0;
+        size_t operand = strcspn(tok, ":");
+        int sep = tok[operand];
+        tok[operand] = 0;
+        ops[c].flags = 0;
         for (int i = 0; i < countof(hf_names); i++) {
             if (!strcmp(hf_names[i] + 2, tok)) {
                 found = 1;
-                ops[c++].type = i + offset;
+                ops[c].type = i + offset;
                 break;
             }
         }
         if (!found)
             return 0;
+        if (sep == ':' && !parse_operand(ops + c, tok + operand + 1))
+            return 0;
+        c++;
     }
     return c;
 }
