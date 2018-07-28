@@ -254,9 +254,16 @@ hf_printfunc(const struct hf_op *ops, int n, FILE *f)
 static unsigned char *
 hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
 {
-    /* mov eax, edi*/
-    *buf++ = 0x89;
-    *buf++ = 0xf8;
+    if (ops[0].type <= HF32_SUBL) {
+        /* mov eax, edi*/
+        *buf++ = 0x89;
+        *buf++ = 0xf8;
+    } else {
+        /* mov rax, rdi*/
+        *buf++ = 0x48;
+        *buf++ = 0x89;
+        *buf++ = 0xf8;
+    }
 
     for (int i = 0; i < n; i++) {
         switch (ops[i].type) {
