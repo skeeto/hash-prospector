@@ -543,12 +543,19 @@ execbuf_unlock(void *buf)
     }
 }
 
+/* Higher quality is slower but has more consistent results. */
+#define SCORE_QUALITY 18
+
+/* Count up output bits changes for a single input bit change.
+ * This does *not* measure bias, making it poor.
+ */
 double
 avalanche_score32(uint32_t (*f)(uint32_t), uint64_t rng[2])
 {
+    long n = 1L << SCORE_QUALITY;
     unsigned long long sum = 0;
     unsigned long long count = 0;
-    for (long i = 0; i < 1L << 16; i++) {
+    for (long i = 0; i < n; i++) {
         uint32_t x = xoroshiro128plus(rng);
         uint32_t h0 = f(x);
         for (int i = 0; i < 32; i++) {
@@ -564,9 +571,10 @@ avalanche_score32(uint32_t (*f)(uint32_t), uint64_t rng[2])
 double
 avalanche_score64(uint64_t (*f)(uint64_t), uint64_t rng[2])
 {
+    long n = 1L << SCORE_QUALITY;
     unsigned long long sum = 0;
     unsigned long long count = 0;
-    for (long i = 0; i < 1L << 16; i++) {
+    for (long i = 0; i < n; i++) {
         uint64_t x = xoroshiro128plus(rng);
         uint64_t h0 = f(x);
         for (int i = 0; i < 64; i++) {
@@ -579,10 +587,13 @@ avalanche_score64(uint64_t (*f)(uint64_t), uint64_t rng[2])
     return sum / (double)count;
 }
 
+/* Measures how each input bit affects each output bit. This measures
+ * both bias and avalanche.
+ */
 double
 bias_score32(uint32_t (*f)(uint32_t), uint64_t rng[2])
 {
-    long n = 1L << 16;
+    long n = 1L << SCORE_QUALITY;
     long bins[32][32] = {{0}};
     for (long i = 0; i < n; i++) {
         uint32_t x = xoroshiro128plus(rng);
@@ -603,13 +614,13 @@ bias_score32(uint32_t (*f)(uint32_t), uint64_t rng[2])
             mean += (diff * diff) / (32 * 32);
         }
     }
-    return sqrt(mean) * 100.0;
+    return sqrt(mean) * 1000.0;
 }
 
 double
 bias_score64(uint64_t (*f)(uint64_t), uint64_t rng[2])
 {
-    long n = 1L << 16;
+    long n = 1L << SCORE_QUALITY;
     long bins[64][64] = {{0}};
     for (long i = 0; i < n; i++) {
         uint64_t x = xoroshiro128plus(rng);
@@ -630,7 +641,7 @@ bias_score64(uint64_t (*f)(uint64_t), uint64_t rng[2])
             mean += (diff * diff) / (64 * 64);
         }
     }
-    return sqrt(mean) * 100.0;
+    return sqrt(mean) * 1000.0;
 }
 
 static void
@@ -733,7 +744,7 @@ main(int argc, char **argv)
     int min = 3;
     int max = 6;
     int flags = 0;
-    double best = 1.0;
+    double best = 10.0;
     char *dynamic = 0;
     char *template = 0;
     struct hf_op ops[32];
