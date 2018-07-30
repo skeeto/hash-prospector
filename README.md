@@ -16,6 +16,24 @@ Check the usage (`-h`) for the full selection of options. Due to the JIT
 compiler, only x86-64 is supported, though the functions it discovers
 can, of course, be used anywhere.
 
+## Discovered Hash Functions
+
+This hash function has an extremely low bias (1.03 @ -q20), lower than
+any other 32-bit hash function I've found elsewhere.
+
+```c
+uint32_t
+hash32(uint32_t x)
+{
+    x ^= x >> 15;
+    x *= UINT32_C(0x2c1b3c6d);
+    x ^= x >> 12;
+    x *= UINT32_C(0x297a2d39);
+    x ^= x >> 15;
+    return x;
+}
+```
+
 ## Reversible operation selection
 
 ```c
