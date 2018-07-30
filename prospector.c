@@ -12,6 +12,8 @@
 #include <sys/mman.h>
 #include <sys/time.h>
 
+#define ABI __attribute__((sysv_abi))
+
 #define countof(a) ((int)(sizeof(a) / sizeof(0[a])))
 
 static uint64_t
@@ -551,7 +553,7 @@ static int score_quality = 18;
  * This does *not* measure bias, making it poor.
  */
 double
-avalanche_score32(uint32_t (*f)(uint32_t), uint64_t rng[2])
+avalanche_score32(uint32_t ABI (*f)(uint32_t), uint64_t rng[2])
 {
     long n = 1L << score_quality;
     unsigned long long sum = 0;
@@ -570,7 +572,7 @@ avalanche_score32(uint32_t (*f)(uint32_t), uint64_t rng[2])
 }
 
 double
-avalanche_score64(uint64_t (*f)(uint64_t), uint64_t rng[2])
+avalanche_score64(uint64_t ABI (*f)(uint64_t), uint64_t rng[2])
 {
     long n = 1L << score_quality;
     unsigned long long sum = 0;
@@ -592,7 +594,7 @@ avalanche_score64(uint64_t (*f)(uint64_t), uint64_t rng[2])
  * both bias and avalanche.
  */
 double
-bias_score32(uint32_t (*f)(uint32_t), uint64_t rng[2])
+bias_score32(uint32_t ABI (*f)(uint32_t), uint64_t rng[2])
 {
     long n = 1L << score_quality;
     long bins[32][32] = {{0}};
@@ -620,7 +622,7 @@ bias_score32(uint32_t (*f)(uint32_t), uint64_t rng[2])
 }
 
 double
-bias_score64(uint64_t (*f)(uint64_t), uint64_t rng[2])
+bias_score64(uint64_t ABI (*f)(uint64_t), uint64_t rng[2])
 {
     long n = 1L << score_quality;
     long bins[64][64] = {{0}};
@@ -854,12 +856,12 @@ main(int argc, char **argv)
         uint64_t nhash;
         uint64_t beg = uepoch();
         if (flags & F_U64) {
-            uint64_t (*hash)(uint64_t) = hashptr;
+            uint64_t ABI (*hash)(uint64_t) = hashptr;
             bias = bias_score64(hash, rng);
             avalanche = avalanche_score64(hash, rng);
             nhash = (1L << score_quality) * 2 * 33;
         } else {
-            uint32_t (*hash)(uint32_t) = hashptr;
+            uint32_t ABI (*hash)(uint32_t) = hashptr;
             bias = bias_score32(hash, rng);
             avalanche = avalanche_score32(hash, rng);
             nhash = (1L << score_quality) * 2 * 65;
@@ -887,7 +889,7 @@ main(int argc, char **argv)
         }
 
         if (flags & F_U64) {
-            uint64_t (*hash)(uint64_t) = hashptr;
+            uint64_t ABI (*hash)(uint64_t) = hashptr;
             uint64_t i = 0;
             do
                 printf("%016llx %016llx\n",
@@ -895,7 +897,7 @@ main(int argc, char **argv)
                         (unsigned long long)hash(i));
             while (++i);
         } else {
-            uint32_t (*hash)(uint32_t) = hashptr;
+            uint32_t ABI (*hash)(uint32_t) = hashptr;
             uint32_t i = 0;
             do
                 printf("%08lx %08lx\n",
@@ -920,10 +922,10 @@ main(int argc, char **argv)
         hf_compile(ops, nops, buf);
         execbuf_lock(buf);
         if (flags & F_U64) {
-            uint64_t (*hash)(uint64_t) = (void *)buf;
+            uint64_t ABI (*hash)(uint64_t) = (void *)buf;
             score = bias_score64(hash, rng);
         } else {
-            uint32_t (*hash)(uint32_t) = (void *)buf;
+            uint32_t ABI (*hash)(uint32_t) = (void *)buf;
             score = bias_score32(hash, rng);
         }
         execbuf_unlock(buf);
