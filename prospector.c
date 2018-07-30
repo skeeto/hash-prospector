@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include <fcntl.h>
+#include <dlfcn.h>
 #include <unistd.h>
 #include <sys/mman.h>
 
@@ -613,13 +614,14 @@ usage(FILE *f)
     fprintf(f, "usage: prospector [-E|L|S] [-8hs] [-r n:m] [-t x]\n");
     fprintf(f, " -8          Generate 64-bit hash functions [32]\n");
     fprintf(f, " -h          Print this help message\n");
+    fprintf(f, " -l ./lib.so Load hash() from a shared object\n");
     fprintf(f, " -p pattern  Search only a given pattern\n");
     fprintf(f, " -r n:m      Use between n and m operations [3:6]\n");
     fprintf(f, " -s          Don't use large constants\n");
     fprintf(f, " -t x        Initial score threshold [16.0]\n");
-    fprintf(f, " -E          Single evaluation mode (requires -p)\n");
+    fprintf(f, " -E          Single evaluation mode (requires -p or -l)\n");
     fprintf(f, " -S          Hash function search mode (default)\n");
-    fprintf(f, " -L          Hash function output list mode (requires -p)\n");
+    fprintf(f, " -L          Enumerate output mode (requires -p or -l)\n");
 }
 
 static int
@@ -683,14 +685,31 @@ parse_template(struct hf_op *ops, int n, char *template, int flags)
     return c;
 }
 
+static void *
+load_function(const char *so)
+{
+    void *handle = dlopen(so, RTLD_NOW);
+    if (!handle) {
+        fprintf(stderr, "prospector: could not load %s\n", so);
+        exit(EXIT_FAILURE);
+    }
+    void *f = dlsym(handle, "hash");
+    if (!f) {
+        fprintf(stderr, "prospector: could not find 'hash' in %s\n", so);
+        exit(EXIT_FAILURE);
+    }
+    return f;
+}
+
 int
 main(int argc, char **argv)
 {
-    int nops;
+    int nops = 0;
     int min = 3;
     int max = 6;
     int flags = 0;
     double best = 1.0;
+    char *dynamic = 0;
     char *template = 0;
     struct hf_op ops[32];
     void *buf = execbuf_alloc();
@@ -699,7 +718,7 @@ main(int argc, char **argv)
     enum {MODE_SEARCH, MODE_EVAL, MODE_LIST} mode = MODE_SEARCH;
 
     int option;
-    while ((option = getopt(argc, argv, "8EhLr:st:p:")) != -1) {
+    while ((option = getopt(argc, argv, "8EhLl:r:st:p:")) != -1) {
         switch (option) {
             case '8':
                 flags |= F_U64;
@@ -712,6 +731,9 @@ main(int argc, char **argv)
                 break;
             case 'L':
                 mode = MODE_LIST;
+                break;
+            case 'l':
+                dynamic = optarg;
                 break;
             case 'p':
                 template = optarg;
@@ -754,17 +776,27 @@ main(int argc, char **argv)
         }
     }
 
-    if (template && mode == MODE_EVAL) {
+    if (mode == MODE_EVAL) {
+        void *hashptr = 0;
         double bias, avalanche;
-        hf_randfunc(ops, nops, rng);
-        hf_compile(ops, nops, buf);
-        execbuf_lock(buf);
+        if (template) {
+            hf_randfunc(ops, nops, rng);
+            hf_compile(ops, nops, buf);
+            execbuf_lock(buf);
+            hashptr = buf;
+        } else if (dynamic) {
+            hashptr = load_function(dynamic);
+        } else {
+            fprintf(stderr, "prospector: must supply -p or -l\n");
+            exit(EXIT_FAILURE);
+        }
+
         if (flags & F_U64) {
-            uint64_t (*hash)(uint64_t) = (void *)buf;
+            uint64_t (*hash)(uint64_t) = hashptr;
             bias = bias_score64(hash, rng);
             avalanche = avalanche_score64(hash, rng);
         } else {
-            uint32_t (*hash)(uint32_t) = (void *)buf;
+            uint32_t (*hash)(uint32_t) = hashptr;
             bias = bias_score32(hash, rng);
             avalanche = avalanche_score32(hash, rng);
         }
@@ -773,12 +805,22 @@ main(int argc, char **argv)
         return 0;
     }
 
-    if (template && mode == MODE_LIST) {
-        hf_randfunc(ops, nops, rng);
-        hf_compile(ops, nops, buf);
-        execbuf_lock(buf);
+    if (mode == MODE_LIST) {
+        void *hashptr = 0;
+        if (template) {
+            hf_randfunc(ops, nops, rng);
+            hf_compile(ops, nops, buf);
+            execbuf_lock(buf);
+            hashptr = buf;
+        } else if (dynamic) {
+            hashptr = load_function(dynamic);
+        } else {
+            fprintf(stderr, "prospector: must supply -p or -l\n");
+            exit(EXIT_FAILURE);
+        }
+
         if (flags & F_U64) {
-            uint64_t (*hash)(uint64_t) = (void *)buf;
+            uint64_t (*hash)(uint64_t) = hashptr;
             uint64_t i = 0;
             do
                 printf("%016llx %016llx\n",
@@ -786,7 +828,7 @@ main(int argc, char **argv)
                         (unsigned long long)hash(i));
             while (++i);
         } else {
-            uint32_t (*hash)(uint32_t) = (void *)buf;
+            uint32_t (*hash)(uint32_t) = hashptr;
             uint32_t i = 0;
             do
                 printf("%08lx %08lx\n",

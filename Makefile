@@ -1,6 +1,6 @@
 CC      = cc
 CFLAGS  = -std=c99 -Wall -Wextra -march=native -O3 -ggdb3
-LDFLAGS = -lm
+LDFLAGS = -lm -ldl
 
 prospector: prospector.c
 	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ prospector.c $(LDLIBS)
