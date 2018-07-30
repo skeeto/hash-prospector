@@ -1,0 +1,27 @@
+/* H2 32-bit hash
+ * https://github.com/h2database/h2database
+ * src/test/org/h2/test/store/CalculateHashConstant.java
+ */
+#include <stdint.h>
+
+uint64_t
+hash(uint64_t x)
+{
+    x ^= x >> 32;
+    x *= UINT64_C(0xd6e8feb86659fd93);
+    x ^= x >> 32;
+    x *= UINT64_C(0xd6e8feb86659fd93);
+    x ^= x >> 32;
+    return x;
+}
+
+uint64_t
+unhash(uint64_t x)
+{
+    x ^= x >> 32;
+    x *= UINT64_C(0xcfee444d8b59a89b);
+    x ^= x >> 32;
+    x *= UINT64_C(0xcfee444d8b59a89b);
+    x ^= x >> 32;
+    return x;
+}
