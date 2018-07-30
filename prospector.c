@@ -506,16 +506,41 @@ execbuf_alloc(void)
     return p;
 }
 
+static enum {
+    WXR_UNKNOWN, WXR_ENABLED, WXR_DISABLED
+} wxr_enabled = WXR_UNKNOWN;
+
 static void
 execbuf_lock(void *buf)
 {
-    mprotect(buf, 4096, PROT_READ | PROT_EXEC);
+    switch (wxr_enabled) {
+        case WXR_UNKNOWN:
+            if (!mprotect(buf, 4096, PROT_READ | PROT_WRITE | PROT_EXEC)) {
+                wxr_enabled = WXR_DISABLED;
+                return;
+            }
+            wxr_enabled = WXR_ENABLED;
+            /* FALLTHROUGH */
+        case WXR_ENABLED:
+            mprotect(buf, 4096, PROT_READ | PROT_EXEC);
+            break;
+        case WXR_DISABLED:
+            break;
+    }
 }
 
 static void
 execbuf_unlock(void *buf)
 {
-    mprotect(buf, 4096, PROT_READ | PROT_WRITE);
+    switch (wxr_enabled) {
+        case WXR_UNKNOWN:
+            abort();
+        case WXR_ENABLED:
+            mprotect(buf, 4096, PROT_READ | PROT_WRITE);
+            break;
+        case WXR_DISABLED:
+            break;
+    }
 }
 
 double
