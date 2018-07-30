@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200112L
+#include <math.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -517,7 +518,7 @@ execbuf_unlock(void *buf)
 }
 
 double
-score32(uint32_t (*f)(uint32_t), uint64_t rng[2])
+avalanche_score32(uint32_t (*f)(uint32_t), uint64_t rng[2])
 {
     unsigned long long sum = 0;
     unsigned long long count = 0;
@@ -535,7 +536,7 @@ score32(uint32_t (*f)(uint32_t), uint64_t rng[2])
 }
 
 double
-score64(uint64_t (*f)(uint64_t), uint64_t rng[2])
+avalanche_score64(uint64_t (*f)(uint64_t), uint64_t rng[2])
 {
     unsigned long long sum = 0;
     unsigned long long count = 0;
@@ -552,33 +553,59 @@ score64(uint64_t (*f)(uint64_t), uint64_t rng[2])
     return sum / (double)count;
 }
 
-#if 0
-/* Exhaustively check every pair that differs by one bit.
- * This function is very slow, so it's not used.
- */
 double
-score32_full(uint32_t (*f)(uint32_t))
+bias_score32(uint32_t (*f)(uint32_t), uint64_t rng[2])
 {
-    unsigned long long sum = 0;
-    unsigned long long count = 0;
-    uint32_t x = 0;
-    do {
+    long n = 1L << 16;
+    long bins[32][32] = {{0}};
+    for (long i = 0; i < n; i++) {
+        uint32_t x = xoroshiro128plus(rng);
         uint32_t h0 = f(x);
-        for (int i = 0; i < 32; i++) {
-            uint32_t bit = UINT32_C(1) << i;
-            uint32_t s = x | bit;
-            if (s != x) {
-                uint32_t h1 = f(s);
-                int c = abs(__builtin_popcountl(h0 ^ h1) - 16);
-                sum += c;
-                count++;
-            }
+        for (int j = 0; j < 32; j++) {
+            uint32_t bit = UINT64_C(1) << j;
+            uint32_t h1 = f(x ^ bit);
+            uint32_t set = h0 ^ h1;
+            for (int k = 0; k < 32; k++)
+                if ((set >> k) & 1)
+                    bins[j][k]++;
         }
-        x++;
-    } while (x);
-    return sum / (double)count;
+    }
+    double mean = 0;
+    for (int j = 0; j < 32; j++) {
+        for (int k = 0; k < 32; k++) {
+            double diff = (bins[j][k] - n / 2) / (n / 2.0);
+            mean += (diff * diff) / (32 * 32);
+        }
+    }
+    return sqrt(mean);
 }
-#endif
+
+double
+bias_score64(uint64_t (*f)(uint64_t), uint64_t rng[2])
+{
+    long n = 1L << 16;
+    long bins[64][64] = {{0}};
+    for (long i = 0; i < n; i++) {
+        uint64_t x = xoroshiro128plus(rng);
+        uint64_t h0 = f(x);
+        for (int j = 0; j < 64; j++) {
+            uint64_t bit = UINT64_C(1) << j;
+            uint64_t h1 = f(x ^ bit);
+            uint64_t set = h0 ^ h1;
+            for (int k = 0; k < 64; k++)
+                if ((set >> k) & 1)
+                    bins[j][k]++;
+        }
+    }
+    double mean = 0;
+    for (int j = 0; j < 64; j++) {
+        for (int k = 0; k < 64; k++) {
+            double diff = (bins[j][k] - n / 2) / (n / 2.0);
+            mean += (diff * diff) / (64 * 64);
+        }
+    }
+    return sqrt(mean);
+}
 
 static void
 usage(FILE *f)
@@ -660,17 +687,21 @@ main(int argc, char **argv)
     int min = 3;
     int max = 6;
     int flags = 0;
-    double best = 16.0;
+    double best = 0.1;
     char *template = 0;
     struct hf_op ops[32];
     void *buf = execbuf_alloc();
+    enum {MODE_SEARCH, MODE_EVAL} mode = MODE_SEARCH;
     uint64_t rng[2] = {0x2a2bc037b59ff989, 0x6d7db86fa2f632ca};
 
     int option;
-    while ((option = getopt(argc, argv, "8hr:st:p:")) != -1) {
+    while ((option = getopt(argc, argv, "8Ehr:st:p:")) != -1) {
         switch (option) {
             case '8':
                 flags |= F_U64;
+                break;
+            case 'E':
+                mode = MODE_EVAL;
                 break;
             case 'h': usage(stdout);
                 exit(EXIT_SUCCESS);
@@ -685,6 +716,9 @@ main(int argc, char **argv)
                             optarg);
                     exit(EXIT_FAILURE);
                 }
+                break;
+            case 'S':
+                mode = MODE_SEARCH;
                 break;
             case 's':
                 flags |= F_TINY;
@@ -713,6 +747,25 @@ main(int argc, char **argv)
         }
     }
 
+    if (template && mode == MODE_EVAL) {
+        double bias, avalanche;
+        hf_randfunc(ops, nops, rng);
+        hf_compile(ops, nops, buf);
+        execbuf_lock(buf);
+        if (flags & F_U64) {
+            uint64_t (*hash)(uint64_t) = (void *)buf;
+            bias = bias_score64(hash, rng);
+            avalanche = avalanche_score64(hash, rng);
+        } else {
+            uint32_t (*hash)(uint32_t) = (void *)buf;
+            bias = bias_score32(hash, rng);
+            avalanche = avalanche_score32(hash, rng);
+        }
+        printf("bias      = %.17g\n", bias);
+        printf("avalanche = %.17g\n", avalanche);
+        return 0;
+    }
+
     for (;;) {
         /* Generate */
         if (template) {
@@ -728,10 +781,10 @@ main(int argc, char **argv)
         execbuf_lock(buf);
         if (flags & F_U64) {
             uint64_t (*hash)(uint64_t) = (void *)buf;
-            score = score64(hash, rng);
+            score = bias_score64(hash, rng);
         } else {
             uint32_t (*hash)(uint32_t) = (void *)buf;
-            score = score32(hash, rng);
+            score = bias_score32(hash, rng);
         }
         execbuf_unlock(buf);
 
