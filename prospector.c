@@ -544,7 +544,7 @@ execbuf_unlock(void *buf)
 }
 
 /* Higher quality is slower but has more consistent results. */
-#define SCORE_QUALITY 18
+static int score_quality = 18;
 
 /* Count up output bits changes for a single input bit change.
  * This does *not* measure bias, making it poor.
@@ -552,7 +552,7 @@ execbuf_unlock(void *buf)
 double
 avalanche_score32(uint32_t (*f)(uint32_t), uint64_t rng[2])
 {
-    long n = 1L << SCORE_QUALITY;
+    long n = 1L << score_quality;
     unsigned long long sum = 0;
     unsigned long long count = 0;
     for (long i = 0; i < n; i++) {
@@ -571,7 +571,7 @@ avalanche_score32(uint32_t (*f)(uint32_t), uint64_t rng[2])
 double
 avalanche_score64(uint64_t (*f)(uint64_t), uint64_t rng[2])
 {
-    long n = 1L << SCORE_QUALITY;
+    long n = 1L << score_quality;
     unsigned long long sum = 0;
     unsigned long long count = 0;
     for (long i = 0; i < n; i++) {
@@ -593,7 +593,7 @@ avalanche_score64(uint64_t (*f)(uint64_t), uint64_t rng[2])
 double
 bias_score32(uint32_t (*f)(uint32_t), uint64_t rng[2])
 {
-    long n = 1L << SCORE_QUALITY;
+    long n = 1L << score_quality;
     long bins[32][32] = {{0}};
     for (long i = 0; i < n; i++) {
         uint32_t x = xoroshiro128plus(rng);
@@ -610,6 +610,7 @@ bias_score32(uint32_t (*f)(uint32_t), uint64_t rng[2])
     double mean = 0;
     for (int j = 0; j < 32; j++) {
         for (int k = 0; k < 32; k++) {
+            /* FIXME: normalize this somehow */
             double diff = (bins[j][k] - n / 2) / (n / 2.0);
             mean += (diff * diff) / (32 * 32);
         }
@@ -620,7 +621,7 @@ bias_score32(uint32_t (*f)(uint32_t), uint64_t rng[2])
 double
 bias_score64(uint64_t (*f)(uint64_t), uint64_t rng[2])
 {
-    long n = 1L << SCORE_QUALITY;
+    long n = 1L << score_quality;
     long bins[64][64] = {{0}};
     for (long i = 0; i < n; i++) {
         uint64_t x = xoroshiro128plus(rng);
@@ -637,6 +638,7 @@ bias_score64(uint64_t (*f)(uint64_t), uint64_t rng[2])
     double mean = 0;
     for (int j = 0; j < 64; j++) {
         for (int k = 0; k < 64; k++) {
+            /* FIXME: normalize this somehow */
             double diff = (bins[j][k] - n / 2) / (n / 2.0);
             mean += (diff * diff) / (64 * 64);
         }
@@ -653,6 +655,7 @@ usage(FILE *f)
     fprintf(f, " -h          Print this help message\n");
     fprintf(f, " -l ./lib.so Load hash() from a shared object\n");
     fprintf(f, " -p pattern  Search only a given pattern\n");
+    fprintf(f, " -q n        Score quality knob (12-30, default: 18)\n");
     fprintf(f, " -r n:m      Use between n and m operations [3:6]\n");
     fprintf(f, " -s          Don't use large constants\n");
     fprintf(f, " -t x        Initial score threshold [16.0]\n");
@@ -755,7 +758,7 @@ main(int argc, char **argv)
     enum {MODE_SEARCH, MODE_EVAL, MODE_LIST} mode = MODE_SEARCH;
 
     int option;
-    while ((option = getopt(argc, argv, "48EhLl:r:st:p:")) != -1) {
+    while ((option = getopt(argc, argv, "48EhLl:q:r:st:p:")) != -1) {
         switch (option) {
             case '4':
                 flags &= ~F_U64;
@@ -782,6 +785,14 @@ main(int argc, char **argv)
                 if (sscanf(optarg, "%d:%d", &min, &max) != 2 ||
                     min < 1 || max > countof(ops) || min > max) {
                     fprintf(stderr, "prospector: invalid range (-r): %s\n",
+                            optarg);
+                    exit(EXIT_FAILURE);
+                }
+                break;
+            case 'q':
+                score_quality = atoi(optarg);
+                if (score_quality < 12 || score_quality > 30) {
+                    fprintf(stderr, "prospector: invalid quality: %s\n",
                             optarg);
                     exit(EXIT_FAILURE);
                 }
