@@ -34,6 +34,11 @@ hash32(uint32_t x)
 }
 ```
 
+To search for alternative multiplication constants, run the prospector
+like so:
+
+    $ ./prospector -p xorr:16,mul,xorr:12,mul,xorr:15
+
 ## Reversible operation selection
 
 ```c
@@ -45,7 +50,7 @@ x ^= x >> constant;
 x ^= x << constant;
 x += x << constant;
 x -= x << constant;
-x = (x << constant) | (x >> (nbits - constant));
+x <<<= constant; // left rotation
 ```
 
 Technically `x = ~x` is covered by `x = ^= constant`. However, `~x` is
