@@ -577,7 +577,7 @@ bias_score32(uint32_t (*f)(uint32_t), uint64_t rng[2])
             mean += (diff * diff) / (32 * 32);
         }
     }
-    return sqrt(mean);
+    return sqrt(mean) * 100.0;
 }
 
 double
@@ -604,19 +604,22 @@ bias_score64(uint64_t (*f)(uint64_t), uint64_t rng[2])
             mean += (diff * diff) / (64 * 64);
         }
     }
-    return sqrt(mean);
+    return sqrt(mean) * 100.0;
 }
 
 static void
 usage(FILE *f)
 {
-    fprintf(f, "usage: prospector [-8hs] [-r n:m] [-t x]\n");
+    fprintf(f, "usage: prospector [-E|L|S] [-8hs] [-r n:m] [-t x]\n");
     fprintf(f, " -8          Generate 64-bit hash functions [32]\n");
     fprintf(f, " -h          Print this help message\n");
     fprintf(f, " -p pattern  Search only a given pattern\n");
     fprintf(f, " -r n:m      Use between n and m operations [3:6]\n");
     fprintf(f, " -s          Don't use large constants\n");
     fprintf(f, " -t x        Initial score threshold [16.0]\n");
+    fprintf(f, " -E          Single evaluation mode (requires -p)\n");
+    fprintf(f, " -S          Hash function search mode (default)\n");
+    fprintf(f, " -L          Hash function output list mode (requires -p)\n");
 }
 
 static int
@@ -687,15 +690,16 @@ main(int argc, char **argv)
     int min = 3;
     int max = 6;
     int flags = 0;
-    double best = 0.1;
+    double best = 1.0;
     char *template = 0;
     struct hf_op ops[32];
     void *buf = execbuf_alloc();
-    enum {MODE_SEARCH, MODE_EVAL} mode = MODE_SEARCH;
     uint64_t rng[2] = {0x2a2bc037b59ff989, 0x6d7db86fa2f632ca};
 
+    enum {MODE_SEARCH, MODE_EVAL, MODE_LIST} mode = MODE_SEARCH;
+
     int option;
-    while ((option = getopt(argc, argv, "8Ehr:st:p:")) != -1) {
+    while ((option = getopt(argc, argv, "8EhLr:st:p:")) != -1) {
         switch (option) {
             case '8':
                 flags |= F_U64;
@@ -705,6 +709,9 @@ main(int argc, char **argv)
                 break;
             case 'h': usage(stdout);
                 exit(EXIT_SUCCESS);
+                break;
+            case 'L':
+                mode = MODE_LIST;
                 break;
             case 'p':
                 template = optarg;
@@ -763,6 +770,30 @@ main(int argc, char **argv)
         }
         printf("bias      = %.17g\n", bias);
         printf("avalanche = %.17g\n", avalanche);
+        return 0;
+    }
+
+    if (template && mode == MODE_LIST) {
+        hf_randfunc(ops, nops, rng);
+        hf_compile(ops, nops, buf);
+        execbuf_lock(buf);
+        if (flags & F_U64) {
+            uint64_t (*hash)(uint64_t) = (void *)buf;
+            uint64_t i = 0;
+            do
+                printf("%016llx %016llx\n",
+                        (unsigned long long)i,
+                        (unsigned long long)hash(i));
+            while (++i);
+        } else {
+            uint32_t (*hash)(uint32_t) = (void *)buf;
+            uint32_t i = 0;
+            do
+                printf("%08lx %08lx\n",
+                        (unsigned long)i,
+                        (unsigned long)hash(i));
+            while (++i);
+        }
         return 0;
     }
 
