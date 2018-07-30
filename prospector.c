@@ -757,7 +757,7 @@ main(int argc, char **argv)
     int min = 3;
     int max = 6;
     int flags = 0;
-    double best = 10.0;
+    double best = 100.0;
     char *dynamic = 0;
     char *template = 0;
     struct hf_op ops[32];
