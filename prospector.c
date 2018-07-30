@@ -648,7 +648,8 @@ static void
 usage(FILE *f)
 {
     fprintf(f, "usage: prospector [-E|L|S] [-8hs] [-r n:m] [-t x]\n");
-    fprintf(f, " -8          Generate 64-bit hash functions [32]\n");
+    fprintf(f, " -4          Generate 32-bit hash functions (default)\n");
+    fprintf(f, " -8          Generate 64-bit hash functions\n");
     fprintf(f, " -h          Print this help message\n");
     fprintf(f, " -l ./lib.so Load hash() from a shared object\n");
     fprintf(f, " -p pattern  Search only a given pattern\n");
@@ -754,8 +755,11 @@ main(int argc, char **argv)
     enum {MODE_SEARCH, MODE_EVAL, MODE_LIST} mode = MODE_SEARCH;
 
     int option;
-    while ((option = getopt(argc, argv, "8EhLl:r:st:p:")) != -1) {
+    while ((option = getopt(argc, argv, "48EhLl:r:st:p:")) != -1) {
         switch (option) {
+            case '4':
+                flags &= ~F_U64;
+                break;
             case '8':
                 flags |= F_U64;
                 break;
