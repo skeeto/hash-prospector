@@ -10,6 +10,7 @@
 #include <dlfcn.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <sys/time.h>
 
 #define countof(a) ((int)(sizeof(a) / sizeof(0[a])))
 
@@ -741,6 +742,14 @@ load_function(const char *so)
     return f;
 }
 
+static uint64_t
+uepoch(void)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return 1000000LL * tv.tv_sec + tv.tv_usec;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -842,17 +851,24 @@ main(int argc, char **argv)
             exit(EXIT_FAILURE);
         }
 
+        uint64_t nhash;
+        uint64_t beg = uepoch();
         if (flags & F_U64) {
             uint64_t (*hash)(uint64_t) = hashptr;
             bias = bias_score64(hash, rng);
             avalanche = avalanche_score64(hash, rng);
+            nhash = (1L << score_quality) * 2 * 33;
         } else {
             uint32_t (*hash)(uint32_t) = hashptr;
             bias = bias_score32(hash, rng);
             avalanche = avalanche_score32(hash, rng);
+            nhash = (1L << score_quality) * 2 * 65;
         }
+        uint64_t end = uepoch();
         printf("bias      = %.17g\n", bias);
         printf("avalanche = %.17g\n", avalanche);
+        printf("speed     = %.3f nsec / hash\n",
+                (end - beg) * 1000.0 / nhash);
         return 0;
     }
 
