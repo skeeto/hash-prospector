@@ -561,7 +561,7 @@ estimate_bias32(uint32_t ABI (*f)(uint32_t), uint64_t rng[2])
         uint32_t x = xoroshiro128plus(rng);
         uint32_t h0 = f(x);
         for (int j = 0; j < 32; j++) {
-            uint32_t bit = UINT64_C(1) << j;
+            uint32_t bit = UINT32_C(1) << j;
             uint32_t h1 = f(x ^ bit);
             uint32_t set = h0 ^ h1;
             for (int k = 0; k < 32; k++)
@@ -616,7 +616,7 @@ exact_bias32(uint32_t ABI (*f)(uint32_t))
     do {
         uint32_t h0 = f(x);
         for (int j = 0; j < 32; j++) {
-            uint32_t bit = UINT64_C(1) << j;
+            uint32_t bit = UINT32_C(1) << j;
             uint32_t h1 = f(x ^ bit);
             uint32_t set = h0 ^ h1;
             for (int k = 0; k < 32; k++)
