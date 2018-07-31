@@ -4,6 +4,8 @@
  */
 #include <stdint.h>
 
+// exact bias: 1.4249702882580686
+__attribute__((sysv_abi))
 uint32_t
 hash(uint32_t x)
 {
@@ -15,6 +17,7 @@ hash(uint32_t x)
     return x;
 }
 
+__attribute__((sysv_abi))
 uint32_t
 unhash(uint32_t x)
 {

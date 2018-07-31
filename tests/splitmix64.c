@@ -1,5 +1,6 @@
 #include <stdint.h>
 
+__attribute__((sysv_abi))
 uint64_t
 hash(uint64_t x)
 {

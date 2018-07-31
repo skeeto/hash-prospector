@@ -1,5 +1,7 @@
 #include <stdint.h>
 
+// exact bias: 44.000700486813841
+__attribute__((sysv_abi))
 uint32_t
 hash(uint32_t x)
 {

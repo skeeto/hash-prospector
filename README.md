@@ -18,10 +18,11 @@ can, of course, be used anywhere.
 
 ## Discovered Hash Functions
 
-This hash function has an extremely low bias (1.03 @ -q20), lower than
-any other 32-bit hash function I've found elsewhere.
+This hash function has an extremely low bias, lower than any other
+32-bit hash function I've found elsewhere.
 
 ```c
+// exact bias: 0.34968228323361017
 uint32_t
 hash32(uint32_t x)
 {

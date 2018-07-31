@@ -4,6 +4,7 @@
  */
 #include <stdint.h>
 
+__attribute__((sysv_abi))
 uint64_t
 hash(uint64_t x)
 {
@@ -15,6 +16,7 @@ hash(uint64_t x)
     return x;
 }
 
+__attribute__((sysv_abi))
 uint64_t
 unhash(uint64_t x)
 {
