@@ -18,8 +18,8 @@ can, of course, be used anywhere.
 
 ## Discovered Hash Functions
 
-This hash function has an extremely low bias, lower than any other
-32-bit hash function I've found elsewhere.
+This hash function has an extremely low bias. The only 32-bit function
+I've seen with an even lower bias is the MurmurHash3 finalizer.
 
 ```c
 // exact bias: 0.34968228323361017
