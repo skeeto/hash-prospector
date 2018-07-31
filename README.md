@@ -16,6 +16,8 @@ Check the usage (`-h`) for the full selection of options. Due to the JIT
 compiler, only x86-64 is supported, though the functions it discovers
 can, of course, be used anywhere.
 
+Article: [Prospecting for Hash Functions][article]
+
 ## Discovered Hash Functions
 
 This hash function has an extremely low bias. The only 32-bit function
@@ -24,7 +26,7 @@ I've seen with an even lower bias is the MurmurHash3 finalizer.
 ```c
 // exact bias: 0.34968228323361017
 uint32_t
-hash32(uint32_t x)
+prospector32(uint32_t x)
 {
     x ^= x >> 15;
     x *= UINT32_C(0x2c1b3c6d);
@@ -38,14 +40,14 @@ hash32(uint32_t x)
 To search for alternative multiplication constants, run the prospector
 like so:
 
-    $ ./prospector -p xorr:16,mul,xorr:12,mul,xorr:15
+    $ ./prospector -p xorr:15,mul,xorr:12,mul,xorr:15
 
 ## Reversible operation selection
 
 ```c
 x  = ~x;
 x ^= constant;
-x *= constant; // only odd constants
+x *= constant | 1; // e.g. only odd constants
 x += constant;
 x ^= x >> constant;
 x ^= x << constant;
@@ -60,6 +62,7 @@ to generate the one correct constant for the XOR operator that achieves
 the same effect.
 
 
+[article]: https://nullprogram.com/blog/2018/07/31/
+[jenkins]: http://burtleburtle.net/bob/hash/integer.html
 [rev]: http://papa.bretmulvey.com/post/124027987928/hash-functions
 [wang]: https://gist.github.com/badboy/6267743
-[jenkins]: http://burtleburtle.net/bob/hash/integer.html
