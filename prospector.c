@@ -624,10 +624,10 @@ exact_bias32(uint32_t ABI (*f)(uint32_t))
                     bins[j][k]++;
         }
     } while (++x);
-    double mean = 0;
+    double mean = 0.0;
     for (int j = 0; j < 32; j++) {
         for (int k = 0; k < 32; k++) {
-            double diff = (bins[j][k] - 2147483648.0) / (2147483648.0);
+            double diff = (bins[j][k] - 2147483648L) / 2147483648.0;
             mean += (diff * diff) / (32 * 32);
         }
     }
