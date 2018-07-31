@@ -549,52 +549,11 @@ execbuf_unlock(void *buf)
 /* Higher quality is slower but has more consistent results. */
 static int score_quality = 18;
 
-/* Count up output bits changes for a single input bit change.
- * This does *not* measure bias, making it poor.
- */
-double
-avalanche_score32(uint32_t ABI (*f)(uint32_t), uint64_t rng[2])
-{
-    long n = 1L << score_quality;
-    unsigned long long sum = 0;
-    unsigned long long count = 0;
-    for (long i = 0; i < n; i++) {
-        uint32_t x = xoroshiro128plus(rng);
-        uint32_t h0 = f(x);
-        for (int i = 0; i < 32; i++) {
-            uint32_t bit = UINT32_C(1) << i;
-            uint32_t h1 = f(x ^ bit);
-            sum += abs(__builtin_popcount(h0 ^ h1) - 16);
-            count++;
-        }
-    }
-    return sum / (double)count;
-}
-
-double
-avalanche_score64(uint64_t ABI (*f)(uint64_t), uint64_t rng[2])
-{
-    long n = 1L << score_quality;
-    unsigned long long sum = 0;
-    unsigned long long count = 0;
-    for (long i = 0; i < n; i++) {
-        uint64_t x = xoroshiro128plus(rng);
-        uint64_t h0 = f(x);
-        for (int i = 0; i < 64; i++) {
-            uint64_t bit = UINT64_C(1) << i;
-            uint64_t h1 = f(x ^ bit);
-            sum += abs(__builtin_popcountl(h0 ^ h1) - 32);
-            count++;
-        }
-    }
-    return sum / (double)count;
-}
-
 /* Measures how each input bit affects each output bit. This measures
  * both bias and avalanche.
  */
-double
-bias_score32(uint32_t ABI (*f)(uint32_t), uint64_t rng[2])
+static double
+estimate_bias32(uint32_t ABI (*f)(uint32_t), uint64_t rng[2])
 {
     long n = 1L << score_quality;
     long bins[32][32] = {{0}};
@@ -621,8 +580,8 @@ bias_score32(uint32_t ABI (*f)(uint32_t), uint64_t rng[2])
     return sqrt(mean) * 1000.0;
 }
 
-double
-bias_score64(uint64_t ABI (*f)(uint64_t), uint64_t rng[2])
+static double
+estimate_bias64(uint64_t ABI (*f)(uint64_t), uint64_t rng[2])
 {
     long n = 1L << score_quality;
     long bins[64][64] = {{0}};
@@ -649,19 +608,48 @@ bias_score64(uint64_t ABI (*f)(uint64_t), uint64_t rng[2])
     return sqrt(mean) * 1000.0;
 }
 
+static double
+exact_bias32(uint32_t ABI (*f)(uint32_t))
+{
+    long long bins[32][32] = {{0}};
+    uint32_t x = 0;
+    do {
+        uint32_t h0 = f(x);
+        for (int j = 0; j < 32; j++) {
+            uint32_t bit = UINT64_C(1) << j;
+            uint32_t h1 = f(x ^ bit);
+            uint32_t set = h0 ^ h1;
+            for (int k = 0; k < 32; k++)
+                if ((set >> k) & 1)
+                    bins[j][k]++;
+        }
+    } while (++x);
+    double mean = 0;
+    for (int j = 0; j < 32; j++) {
+        for (int k = 0; k < 32; k++) {
+            double diff = (bins[j][k] - 2147483648.0) / (2147483648.0);
+            mean += (diff * diff) / (32 * 32);
+        }
+    }
+    return sqrt(mean) * 1000.0;
+}
+
+
 static void
 usage(FILE *f)
 {
-    fprintf(f, "usage: prospector [-E|L|S] [-8hs] [-r n:m] [-t x]\n");
+    fprintf(f, "usage: prospector "
+            "[-E|L|S] [-4|-8] [-ehs] [-l lib] [-p pattern] [-r n:m] [-t x]\n");
     fprintf(f, " -4          Generate 32-bit hash functions (default)\n");
     fprintf(f, " -8          Generate 64-bit hash functions\n");
+    fprintf(f, " -e          Measure bias exactly (requires -E)\n");
     fprintf(f, " -h          Print this help message\n");
     fprintf(f, " -l ./lib.so Load hash() from a shared object\n");
     fprintf(f, " -p pattern  Search only a given pattern\n");
     fprintf(f, " -q n        Score quality knob (12-30, default: 18)\n");
     fprintf(f, " -r n:m      Use between n and m operations [3:6]\n");
     fprintf(f, " -s          Don't use large constants\n");
-    fprintf(f, " -t x        Initial score threshold [16.0]\n");
+    fprintf(f, " -t x        Initial score threshold [10.0]\n");
     fprintf(f, " -E          Single evaluation mode (requires -p or -l)\n");
     fprintf(f, " -S          Hash function search mode (default)\n");
     fprintf(f, " -L          Enumerate output mode (requires -p or -l)\n");
@@ -759,6 +747,7 @@ main(int argc, char **argv)
     int min = 3;
     int max = 6;
     int flags = 0;
+    int use_exact = 0;
     double best = 100.0;
     char *dynamic = 0;
     char *template = 0;
@@ -769,7 +758,7 @@ main(int argc, char **argv)
     enum {MODE_SEARCH, MODE_EVAL, MODE_LIST} mode = MODE_SEARCH;
 
     int option;
-    while ((option = getopt(argc, argv, "48EhLl:q:r:st:p:")) != -1) {
+    while ((option = getopt(argc, argv, "48EehLl:q:r:st:p:")) != -1) {
         switch (option) {
             case '4':
                 flags &= ~F_U64;
@@ -779,6 +768,9 @@ main(int argc, char **argv)
                 break;
             case 'E':
                 mode = MODE_EVAL;
+                break;
+            case 'e':
+                use_exact = 1;
                 break;
             case 'h': usage(stdout);
                 exit(EXIT_SUCCESS);
@@ -839,8 +831,8 @@ main(int argc, char **argv)
     }
 
     if (mode == MODE_EVAL) {
+        double bias;
         void *hashptr = 0;
-        double bias, avalanche;
         if (template) {
             hf_randfunc(ops, nops, rng);
             hf_compile(ops, nops, buf);
@@ -857,20 +849,23 @@ main(int argc, char **argv)
         uint64_t beg = uepoch();
         if (flags & F_U64) {
             uint64_t ABI (*hash)(uint64_t) = hashptr;
-            bias = bias_score64(hash, rng);
-            avalanche = avalanche_score64(hash, rng);
-            nhash = (1L << score_quality) * 2 * 33;
+            if (use_exact)
+                fputs("warning: no exact bias for 64-bit\n", stderr);
+            bias = estimate_bias64(hash, rng);
+            nhash = (1L << score_quality) * 33;
         } else {
             uint32_t ABI (*hash)(uint32_t) = hashptr;
-            bias = bias_score32(hash, rng);
-            avalanche = avalanche_score32(hash, rng);
-            nhash = (1L << score_quality) * 2 * 65;
+            if (use_exact) {
+                bias = exact_bias32(hash);
+                nhash = (1LL << 32) * 33;
+            } else {
+                bias = estimate_bias32(hash, rng);
+                nhash = (1L << score_quality) * 65;
+            }
         }
         uint64_t end = uepoch();
         printf("bias      = %.17g\n", bias);
-        printf("avalanche = %.17g\n", avalanche);
-        printf("speed     = %.3f nsec / hash\n",
-                (end - beg) * 1000.0 / nhash);
+        printf("speed     = %.3f nsec / hash\n", (end - beg) * 1000.0 / nhash);
         return 0;
     }
 
@@ -923,10 +918,10 @@ main(int argc, char **argv)
         execbuf_lock(buf);
         if (flags & F_U64) {
             uint64_t ABI (*hash)(uint64_t) = (void *)buf;
-            score = bias_score64(hash, rng);
+            score = estimate_bias64(hash, rng);
         } else {
             uint32_t ABI (*hash)(uint32_t) = (void *)buf;
-            score = bias_score32(hash, rng);
+            score = estimate_bias32(hash, rng);
         }
         execbuf_unlock(buf);
 
