@@ -15,12 +15,14 @@ hashes = \
     tests/degski64.so \
     tests/h2hash32.so \
     tests/hash32shift.so \
+    tests/murmurhash3_finalizer32.so \
     tests/splitmix64.so
 
 check: prospector $(hashes)
 	./prospector -E -8 -l tests/degski64.so
 	./prospector -E -4 -l tests/h2hash32.so
 	./prospector -E -4 -l tests/hash32shift.so
+	./prospector -E -4 -l tests/murmurhash3_finalizer32.so
 	./prospector -E -8 -l tests/splitmix64.so
 
 clean:
