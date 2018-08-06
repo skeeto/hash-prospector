@@ -20,8 +20,28 @@ Article: [Prospecting for Hash Functions][article]
 
 ## Discovered Hash Functions
 
-This hash function has an extremely low bias. The only 32-bit function
-I've seen with an even lower bias is the MurmurHash3 finalizer.
+The following 32-bit integer hash function has the lowest bias of any hash
+function ever devised (as far as I know). It even beats the venerable
+MurmurHash3 32-bit finalizer by a tiny margin. The hash function construction
+was discovered by the prospector, then the parameters were tuned using a
+genetic algorithm.
+
+```c
+// exact bias: 0.20207553121367283
+uint32_t
+lowbias32(uint32_t x)
+{
+    x ^= x >> 16;
+    x *= UINT32_C(0xe2d0d4cb);
+    x ^= x >> 15;
+    x *= UINT32_C(0x3c6ad939);
+    x ^= x >> 15;
+    return x;
+}
+```
+
+This next function was discovered using only the prospector. It has a bit more
+bias than the previous function.
 
 ```c
 // exact bias: 0.34968228323361017
@@ -37,10 +57,35 @@ prospector32(uint32_t x)
 }
 ```
 
-To search for alternative multiplication constants, run the prospector
-like so:
+To use the prospector search randomly for alternative multiplication constants,
+run it like so:
 
     $ ./prospector -p xorr:15,mul,xorr:12,mul,xorr:15
+
+## Measuring exact bias
+
+The `-E` mode evaluates the bias of a given hash function (`-p` or `-l`). By
+default the prospector uses an estimate to quickly evaluate a function's bias,
+but it's non-deterministic and there's a lot of noise in the result. To
+exhaustively measure the exact bias, use the `-e` option.
+
+The function to be checked can be defined using `-p` and a pattern or
+`-l` and a shared library containing a function named `hash()`. For
+example, to measure the exact bias of the best hash function above:
+
+    $ ./prospector -Eep xorr:16,mul:e2d0d4cb,xorr:15,mul:3c6ad939,xorr:15
+
+Or drop the function in a C file named hash.c, and name the function
+`hash()`. This lets you test hash functions that can't be represented
+using the prospector's limited notion of hash functions.
+
+    $ cc -O3 -shared -fPIC -l hash.so hash.c
+    $ ./prospector -Eel ./hash.so
+
+By default it treats its input as a 32-bit hash function. Use the `-8`
+switch to test (by estimation) 64-bit functions. There is no exact,
+exhaustive test for 64-bit hash functions since that would take far too
+long.
 
 ## Reversible operation selection
 
