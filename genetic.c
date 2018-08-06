@@ -25,10 +25,16 @@ rand64(uint64_t s[4])
     return r;
 }
 
+
+#define FLAG_SCORED  (1u << 0)
+#define FLAG_EXACT   (1u << 1)
+#define FLAG_PRINTED (1u << 2)
+
 struct gene {
     double score;
     short s[3];
     uint32_t c[2];
+    unsigned flags;
 };
 
 static uint32_t
@@ -112,6 +118,7 @@ gene_gen(struct gene *g, uint64_t rng[4])
     g->s[2] = 10 + (s >> 48) % 10;
     g->c[0] = c;
     g->c[1] = c >> 32;
+    g->flags = 0;
 }
 
 static void
@@ -152,6 +159,7 @@ gene_mutate(struct gene *g, uint64_t rng[4])
             g->c[1] += (int)(r & 0xffff) - 32768;
             break;
     }
+    g->flags = 0;
 }
 
 static void
@@ -168,6 +176,7 @@ gene_cross(struct gene *g,
         case 2: g->c[1] = b->c[1]; /* FALLTHROUGH */
         case 3: g->s[2] = b->s[2];
     }
+    g->flags = 0;
 }
 
 static int
@@ -225,18 +234,27 @@ main(void)
 
     for (;;) {
         #pragma omp parallel for schedule(dynamic)
-        for (int i = 0; i < POOL; i++)
-            pool[i].score = estimate_bias32(pool + i, rng[i]);
-        for (int i = 0; i < POOL; i++)
-            if (pool[i].score < THRESHOLD)
+        for (int i = 0; i < POOL; i++) {
+            if (!(pool[i].flags & FLAG_SCORED)) {
+                pool[i].score = estimate_bias32(pool + i, rng[i]);
+                pool[i].flags |= FLAG_SCORED;
+            }
+        }
+        for (int i = 0; i < POOL; i++) {
+            if (!(pool[i].flags & FLAG_EXACT) && pool[i].score < THRESHOLD) {
                 pool[i].score = exact_bias32(pool + i);
+                pool[i].flags |= FLAG_EXACT;
+            }
+        }
 
         qsort(pool, POOL, sizeof(*pool), cmp);
         if (verbose) {
             for (int i = 0; i < POOL; i++) {
-                if (pool[i].score < DONTCARE) {
+                if (!(pool[i].flags & FLAG_PRINTED) &&
+                      pool[i].score < DONTCARE) {
                     gene_print(pool + i, stdout);
                     printf(" = %.17g\n", pool[i].score);
+                    pool[i].flags |= FLAG_PRINTED;
                 }
             }
         }
