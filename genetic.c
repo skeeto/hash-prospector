@@ -1,0 +1,252 @@
+/* Genetic algorithm to explore xorshift-multiply-xorshift hashes.
+ */
+#include <math.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
+
+#define POOL      40
+#define THRESHOLD 2.0  // Use exact when estimate is below this
+#define DONTCARE  0.4  // Only print tuples with bias below this threshold
+#define QUALITY   18   // 2^N iterations of estimate samples
+
+static uint64_t
+rand64(uint64_t s[4])
+{
+    uint64_t x = s[1] * 5;
+    uint64_t r = ((x << 7) | (x >> 57)) * 9;
+    uint64_t t = s[1] << 17;
+    s[2] ^= s[0];
+    s[3] ^= s[1];
+    s[1] ^= s[2];
+    s[0] ^= s[3];
+    s[2] ^= t;
+    s[3] = (s[3] << 45) | (s[3] >> 19);
+    return r;
+}
+
+struct gene {
+    double score;
+    short s[3];
+    uint32_t c[2];
+};
+
+static uint32_t
+hash(const struct gene *g, uint32_t x)
+{
+    x ^= x >> g->s[0];
+    x *= g->c[0];
+    x ^= x >> g->s[1];
+    x *= g->c[1];
+    x ^= x >> g->s[2];
+    return x;
+}
+
+static double
+estimate_bias32(const struct gene *g, uint64_t rng[4])
+{
+    long n = 1L << QUALITY;
+    long bins[32][32] = {{0}};
+    for (long i = 0; i < n; i++) {
+        uint32_t x = rand64(rng);
+        uint32_t h0 = hash(g, x);
+        for (int j = 0; j < 32; j++) {
+            uint32_t bit = UINT32_C(1) << j;
+            uint32_t h1 = hash(g, x ^ bit);
+            uint32_t set = h0 ^ h1;
+            for (int k = 0; k < 32; k++)
+                if ((set >> k) & 1)
+                    bins[j][k]++;
+        }
+    }
+    double mean = 0;
+    for (int j = 0; j < 32; j++) {
+        for (int k = 0; k < 32; k++) {
+            double diff = (bins[j][k] - n / 2) / (n / 2.0);
+            mean += (diff * diff) / (32 * 32);
+        }
+    }
+    return sqrt(mean) * 1000.0;
+}
+
+#define EXACT_SPLIT 32  // must be power of two
+static double
+exact_bias32(const struct gene *g)
+{
+    long long bins[32][32] = {{0}};
+    static const uint64_t range = (UINT64_C(1) << 32) / EXACT_SPLIT;
+    #pragma omp parallel for
+    for (int i = 0; i < EXACT_SPLIT; i++) {
+        long long b[32][32] = {{0}};
+        for (uint64_t x = i * range; x < (i + 1) * range; x++) {
+            uint32_t h0 = hash(g, x);
+            for (int j = 0; j < 32; j++) {
+                uint32_t bit = UINT32_C(1) << j;
+                uint32_t h1 = hash(g, x ^ bit);
+                uint32_t set = h0 ^ h1;
+                for (int k = 0; k < 32; k++)
+                    if ((set >> k) & 1)
+                        b[j][k]++;
+            }
+        }
+        #pragma omp critical
+        for (int j = 0; j < 32; j++)
+            for (int k = 0; k < 32; k++)
+                bins[j][k] += b[j][k];
+    }
+    double mean = 0.0;
+    for (int j = 0; j < 32; j++) {
+        for (int k = 0; k < 32; k++) {
+            double diff = (bins[j][k] - 2147483648L) / 2147483648.0;
+            mean += (diff * diff) / (32 * 32);
+        }
+    }
+    return sqrt(mean) * 1000.0;
+}
+
+static void
+gene_gen(struct gene *g, uint64_t rng[4])
+{
+    uint64_t s = rand64(rng);
+    uint64_t c = rand64(rng);
+    g->s[0] = 10 + (s >>  0) % 10;
+    g->s[1] = 10 + (s >> 24) % 10;
+    g->s[2] = 10 + (s >> 48) % 10;
+    g->c[0] = c;
+    g->c[1] = c >> 32;
+}
+
+static void
+gene_print(const struct gene *g, FILE *f)
+{
+    fprintf(f, "[%2d %08lx %2d %08lx %2d]",
+            g->s[0], (unsigned long)g->c[0],
+            g->s[1], (unsigned long)g->c[1], g->s[2]);
+}
+
+static int
+small(uint64_t r)
+{
+    static const int v[] = {-3, -2, -1, +1, +2, +3};
+    return v[r % 6];
+}
+
+static void
+gene_mutate(struct gene *g, uint64_t rng[4])
+{
+    uint64_t r = rand64(rng);
+    int s = r % 5;
+    r >>= 3;
+    switch (s) {
+        case 0:
+            g->s[0] += small(r);
+            break;
+        case 1:
+            g->s[1] += small(r);
+            break;
+        case 2:
+            g->s[2] += small(r);
+            break;
+        case 3:
+            g->c[0] += (int)(r & 0xffff) - 32768;
+            break;
+        case 4:
+            g->c[1] += (int)(r & 0xffff) - 32768;
+            break;
+    }
+}
+
+static void
+gene_cross(struct gene *g,
+           const struct gene *a,
+           const struct gene *b,
+           uint64_t rng[4])
+{
+    uint64_t r = rand64(rng);
+    *g = *a;
+    switch (r & 2) {
+        case 0: g->c[0] = b->c[0]; /* FALLTHROUGH */
+        case 1: g->s[1] = b->s[1]; /* FALLTHROUGH */
+        case 2: g->c[1] = b->c[1]; /* FALLTHROUGH */
+        case 3: g->s[2] = b->s[2];
+    }
+}
+
+static int
+gene_same(const struct gene *a, const struct gene *b)
+{
+    return a->s[0] == b->s[0] &&
+           a->s[1] == b->s[1] &&
+           a->s[2] == b->s[2] &&
+           a->c[0] == b->c[0] &&
+           a->c[1] == b->c[1];
+}
+
+static void
+rng_init(void *p, size_t len)
+{
+    FILE *f = fopen("/dev/urandom", "rb");
+    if (!f)
+        abort();
+    if (!fread(p, 1, len, f))
+        abort();
+    fclose(f);
+}
+
+static int
+cmp(const void *pa, const void *pb)
+{
+    double a = *(double *)pa;
+    double b = *(double *)pb;
+    if (a < b)
+        return -1;
+    if (b < a)
+        return 1;
+    return 0;
+}
+
+static void
+undup(struct gene *pool, uint64_t rng[4])
+{
+    for (int i = 0; i < POOL; i++)
+        for (int j = i + 1; j < POOL; j++)
+            if (gene_same(pool + i, pool + j))
+                gene_mutate(pool + i, rng);
+}
+
+int
+main(void)
+{
+    int verbose = 1;
+    uint64_t rng[POOL][4];
+    struct gene pool[POOL];
+
+    rng_init(rng, sizeof(rng));
+    for (int i = 0; i < POOL; i++)
+        gene_gen(pool + i, rng[0]);
+
+    for (;;) {
+        #pragma omp parallel for schedule(dynamic)
+        for (int i = 0; i < POOL; i++)
+            pool[i].score = estimate_bias32(pool + i, rng[i]);
+        for (int i = 0; i < POOL; i++)
+            if (pool[i].score < THRESHOLD)
+                pool[i].score = exact_bias32(pool + i);
+
+        qsort(pool, POOL, sizeof(*pool), cmp);
+        if (verbose) {
+            for (int i = 0; i < POOL; i++) {
+                if (pool[i].score < DONTCARE) {
+                    gene_print(pool + i, stdout);
+                    printf(" = %.17g\n", pool[i].score);
+                }
+            }
+        }
+
+        int c = POOL / 4;
+        for (int a = 0; c < POOL && a < POOL / 4; a++)
+            for (int b = a + 1; c < POOL && b < POOL / 4; b++)
+                gene_cross(pool + c++, pool + a, pool + b, rng[0]);
+        undup(pool, rng[0]);
+    }
+}

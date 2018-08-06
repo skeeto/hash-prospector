@@ -3,8 +3,13 @@ CFLAGS  = -std=c99 -Wall -Wextra -march=native -O3 -ggdb3 -fopenmp
 LDFLAGS =
 LDLIBS  = -lm -ldl
 
+compile: prospector genetic
+
 prospector: prospector.c
 	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ prospector.c $(LDLIBS)
+
+genetic: genetic.c
+	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ genetic.c $(LDLIBS)
 
 tests/degski64.so: tests/degski64.c
 tests/h2hash32.so: tests/h2hash32.c
