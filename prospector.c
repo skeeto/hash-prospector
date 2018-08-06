@@ -565,8 +565,7 @@ estimate_bias32(uint32_t ABI (*f)(uint32_t), uint64_t rng[2])
             uint32_t h1 = f(x ^ bit);
             uint32_t set = h0 ^ h1;
             for (int k = 0; k < 32; k++)
-                if ((set >> k) & 1)
-                    bins[j][k]++;
+                bins[j][k] += (set >> k) & 1;
         }
     }
     double mean = 0;
@@ -593,8 +592,7 @@ estimate_bias64(uint64_t ABI (*f)(uint64_t), uint64_t rng[2])
             uint64_t h1 = f(x ^ bit);
             uint64_t set = h0 ^ h1;
             for (int k = 0; k < 64; k++)
-                if ((set >> k) & 1)
-                    bins[j][k]++;
+                bins[j][k] += (set >> k) & 1;
         }
     }
     double mean = 0;
@@ -624,8 +622,7 @@ exact_bias32(uint32_t ABI (*f)(uint32_t))
                 uint32_t h1 = f(x ^ bit);
                 uint32_t set = h0 ^ h1;
                 for (int k = 0; k < 32; k++)
-                    if ((set >> k) & 1)
-                        b[j][k]++;
+                    b[j][k] += (set >> k) & 1;
             }
         }
         #pragma omp critical

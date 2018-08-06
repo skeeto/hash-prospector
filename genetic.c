@@ -55,8 +55,7 @@ estimate_bias32(const struct gene *g, uint64_t rng[4])
             uint32_t h1 = hash(g, x ^ bit);
             uint32_t set = h0 ^ h1;
             for (int k = 0; k < 32; k++)
-                if ((set >> k) & 1)
-                    bins[j][k]++;
+                bins[j][k] += (set >> k) & 1;
         }
     }
     double mean = 0;
@@ -85,8 +84,7 @@ exact_bias32(const struct gene *g)
                 uint32_t h1 = hash(g, x ^ bit);
                 uint32_t set = h0 ^ h1;
                 for (int k = 0; k < 32; k++)
-                    if ((set >> k) & 1)
-                        b[j][k]++;
+                    b[j][k] += (set >> k) & 1;
             }
         }
         #pragma omp critical
