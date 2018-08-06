@@ -218,7 +218,7 @@ undup(struct gene *pool, uint64_t rng[4])
     for (int i = 0; i < POOL; i++)
         for (int j = i + 1; j < POOL; j++)
             if (gene_same(pool + i, pool + j))
-                gene_mutate(pool + i, rng);
+                gene_mutate(pool + j, rng);
 }
 
 int
