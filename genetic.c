@@ -1,6 +1,7 @@
 /* Genetic algorithm to explore xorshift-multiply-xorshift hashes.
  */
 #include <math.h>
+#include <time.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -9,6 +10,7 @@
 #define THRESHOLD 2.0  // Use exact when estimate is below this
 #define DONTCARE  0.4  // Only print tuples with bias below this threshold
 #define QUALITY   18   // 2^N iterations of estimate samples
+#define RESETMINS 90   // Reset pool after this many minutes of no progress
 
 static uint64_t
 rand64(uint64_t s[4])
@@ -225,6 +227,8 @@ int
 main(void)
 {
     int verbose = 1;
+    double best = 1000.0;
+    time_t best_time = time(0);
     uint64_t rng[POOL][4];
     struct gene pool[POOL];
 
@@ -257,6 +261,17 @@ main(void)
                     pool[i].flags |= FLAG_PRINTED;
                 }
             }
+        }
+
+        time_t now = time(0);
+        if (pool[0].score < best) {
+            best = pool[0].score;
+            best_time = now;
+        } else if (now - best_time > RESETMINS * 60) {
+            best = 1000.0;
+            best_time = now;
+            for (int i = 0; i < POOL; i++)
+                gene_gen(pool + i, rng[0]);
         }
 
         int c = POOL / 4;
