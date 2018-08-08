@@ -8,7 +8,7 @@
 
 #define POOL      40
 #define THRESHOLD 2.0  // Use exact when estimate is below this
-#define DONTCARE  0.4  // Only print tuples with bias below this threshold
+#define DONTCARE  0.3  // Only print tuples with bias below this threshold
 #define QUALITY   18   // 2^N iterations of estimate samples
 #define RESETMINS 90   // Reset pool after this many minutes of no progress
 
