@@ -68,7 +68,7 @@ with carefully chosen parameters to approach the theoretical bias limit
 indistinguishable from a perfect PRF:
 
 ```c
-// exact bias: 0.023431341478063347
+// exact bias: 0.022829781930394154
 uint32_t
 triple32(uint32_t x)
 {
@@ -77,8 +77,8 @@ triple32(uint32_t x)
     x ^= x >> 12;
     x *= UINT32_C(0xac4c1b51);
     x ^= x >> 17;
-    x *= UINT32_C(0x87d99d0f);
-    x ^= x >> 14;
+    x *= UINT32_C(0xc0a8e5d7);
+    x ^= x >> 12;
     return x;
 }
 ```
