@@ -20,22 +20,22 @@ Article: [Prospecting for Hash Functions][article]
 
 ## Discovered Hash Functions
 
-The following 32-bit integer hash function has the lowest bias of any hash
-function ever devised (as far as I know). It even beats the venerable
-MurmurHash3 32-bit finalizer by a tiny margin. The hash function construction
-was discovered by the prospector, then the parameters were tuned using a
+This 32-bit integer hash function has the lowest bias of any in this
+form ever devised. It even beats the venerable MurmurHash3 32-bit
+finalizer by a tiny margin. The hash function construction was
+discovered by the prospector, then the parameters were tuned using a
 genetic algorithm.
 
 ```c
-// exact bias: 0.20207553121367283
+// exact bias: 0.19768193144773874
 uint32_t
 lowbias32(uint32_t x)
 {
+    x ^= x >> 18;
+    x *= UINT32_C(0xa136aaad);
     x ^= x >> 16;
-    x *= UINT32_C(0xe2d0d4cb);
-    x ^= x >> 15;
-    x *= UINT32_C(0x3c6ad939);
-    x ^= x >> 15;
+    x *= UINT32_C(0x9f6d62d7);
+    x ^= x >> 17;
     return x;
 }
 ```
@@ -61,6 +61,27 @@ To use the prospector search randomly for alternative multiplication constants,
 run it like so:
 
     $ ./prospector -p xorr:15,mul,xorr:12,mul,xorr:15
+
+Another round of multiply-xorshift in this construction allows functions
+with carefully chosen parameters to approach the theoretical bias limit
+(bias = ~0.0217). For example, this hash function is *nearly*
+indistinguishable from a perfect PRF:
+
+```c
+// exact bias: 0.023431341478063347
+uint32_t
+triple32(uint32_t x)
+{
+    x ^= x >> 18;
+    x *= UINT32_C(0xed5ad4bb);
+    x ^= x >> 12;
+    x *= UINT32_C(0xac4c1b51);
+    x ^= x >> 17;
+    x *= UINT32_C(0x87d99d0f);
+    x ^= x >> 14;
+    return x;
+}
+```
 
 ## Measuring exact bias
 
