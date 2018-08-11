@@ -1,14 +1,96 @@
 #define _POSIX_C_SOURCE 200112L
+#define WIN32_LEAN_AND_MEAN
 #include <math.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
-#define N           3
-#define SHIFT_RANGE 1
-#define CONST_RANGE 2
+#define HASHN       3  // number of multiplies in hash
+#define SHIFT_RANGE 1  // radius of shift search
+#define CONST_RANGE 2  // radius of const search
+
+static int optind = 1;
+static int opterr = 1;
+static int optopt;
+static char *optarg;
+static int
+getopt(int argc, char * const argv[], const char *optstring)
+{
+    static int optpos = 1;
+    const char *arg;
+    (void)argc;
+    /* Reset? */
+    if (optind == 0) {
+        optind = 1;
+        optpos = 1;
+    }
+    arg = argv[optind];
+    if (arg && strcmp(arg, "--") == 0) {
+        optind++;
+        return -1;
+    } else if (!arg || arg[0] != '-' || !isalnum(arg[1])) {
+        return -1;
+    } else {
+        const char *opt = strchr(optstring, arg[optpos]);
+        optopt = arg[optpos];
+        if (!opt) {
+            if (opterr && *optstring != ':')
+                fprintf(stderr, "%s: illegal option: %c\n", argv[0], optopt);
+            return '?';
+        } else if (opt[1] == ':') {
+            if (arg[optpos + 1]) {
+                optarg = (char *)arg + optpos + 1;
+                optind++;
+                optpos = 1;
+                return optopt;
+            } else if (argv[optind + 1]) {
+                optarg = (char *)argv[optind + 1];
+                optind += 2;
+                optpos = 1;
+                return optopt;
+            } else {
+                if (opterr && *optstring != ':')
+                    fprintf(stderr,
+                            "%s: option requires an argument: %c\n",
+                            argv[0], optopt);
+                return *optstring == ':' ? ':' : '?';
+            }
+        } else {
+            if (!arg[++optpos]) {
+                optind++;
+                optpos = 1;
+            }
+            return optopt;
+        }
+    }
+}
+
+#if defined(__unix__)
+#include <sys/time.h>
+uint64_t
+uepoch(void)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return 1000000LL * tv.tv_sec + tv.tv_usec;
+}
+#elif defined(_WIN32)
+#include <windows.h>
+uint64_t
+uepoch(void)
+{
+    FILETIME ft;
+    GetSystemTimeAsFileTime(&ft);
+    uint64_t tt = ft.dwHighDateTime;
+    tt <<= 32;
+    tt |= ft.dwLowDateTime;
+    tt /=10;
+    tt -= UINT64_C(11644473600000000);
+    return tt;
+}
+#endif
 
 static uint64_t
 rand64(uint64_t s[4])
@@ -26,38 +108,38 @@ rand64(uint64_t s[4])
 }
 
 struct hash {
-    uint32_t c[N];
-    char s[N + 1];
+    uint32_t c[HASHN];
+    char s[HASHN + 1];
 };
 
 static void
 hash_gen(struct hash *h, uint64_t rng[4])
 {
-    for (int i = 0; i < N; i++)
+    for (int i = 0; i < HASHN; i++)
         h->c[i] = (rand64(rng) >> 32) | 1u;
-    for (int i = 0; i <= N; i++)
+    for (int i = 0; i <= HASHN; i++)
         h->s[i] = 16;
 }
 
 static int
 hash_equal(const struct hash *a, const struct hash *b)
 {
-    for (int i = 0; i < N; i++) {
+    for (int i = 0; i < HASHN; i++) {
         if (a->c[i] != b->c[i])
             return 0;
         if (a->s[i] != b->s[i])
             return 0;
     }
-    return a->s[N] == b->s[N];
+    return a->s[HASHN] == b->s[HASHN];
 }
 
 static void
 hash_print(const struct hash *h)
 {
     putchar('[');
-    for (int i = 0; i < N; i++)
+    for (int i = 0; i < HASHN; i++)
         printf("%2d %08lx ", h->s[i], (unsigned long)h->c[i]);
-    printf("%2d]", h->s[N]);
+    printf("%2d]", h->s[HASHN]);
     fflush(stdout);
 }
 
@@ -70,7 +152,7 @@ hash_parse(struct hash *h, char *str)
     if (*str != '[')
         return 0;
     str++;
-    for (int i = 0; i < N; i++) {
+    for (int i = 0; i < HASHN; i++) {
         tok = strtok(i ? 0 : str, " ");
         s = strtol(tok, &end, 10);
         if (s < 1 || s > 31 || !(*end == 0 || *end == ' '))
@@ -86,18 +168,18 @@ hash_parse(struct hash *h, char *str)
     s = strtol(tok, &end, 10);
     if (s < 1 || s > 31 || *end)
         return 0;
-    h->s[N] = s;
+    h->s[HASHN] = s;
     return 1;
 }
 
 static uint32_t
 hash(const struct hash *h, uint32_t x)
 {
-    for (int i = 0; i < N; i++) {
+    for (int i = 0; i < HASHN; i++) {
         x ^= x >> h->s[i];
         x *= h->c[i];
     }
-    x ^= x >> h->s[N];
+    x ^= x >> h->s[HASHN];
     return x;
 }
 
@@ -105,10 +187,11 @@ hash(const struct hash *h, uint32_t x)
 static double
 hash_bias32(const struct hash *f)
 {
+    int i; // declare here to work around Visual Studio issue
     long long bins[32][32] = {{0}};
     static const uint64_t range = (UINT64_C(1) << 32) / EXACT_SPLIT;
     #pragma omp parallel for
-    for (int i = 0; i < EXACT_SPLIT; i++) {
+    for (i = 0; i < EXACT_SPLIT; i++) {
         long long b[32][32] = {{0}};
         for (uint64_t x = i * range; x < (i + 1) * range; x++) {
             uint32_t h0 = hash(f, x);
@@ -133,17 +216,6 @@ hash_bias32(const struct hash *f)
         }
     }
     return sqrt(mean) * 1000.0;
-}
-
-static void
-rng_init(void *p, size_t len)
-{
-    FILE *f = fopen("/dev/urandom", "rb");
-    if (!f)
-        abort();
-    if (!fread(p, 1, len, f))
-        abort();
-    fclose(f);
 }
 
 static uint64_t
@@ -194,6 +266,18 @@ mix64x4(uint64_t x[4])
     ROUND64(2, 0, 1, 3);
     ROUND64(3, 0, 1, 3);
     #undef ROUND64
+}
+
+static void
+rng_init(uint64_t rng[4])
+{
+    void *p = malloc(1024L * 1024);
+    rng[0] = uepoch();
+    rng[1] = (uint64_t)rng_init;
+    rng[2] = (uint64_t)rng;
+    rng[3] = (uint64_t)p;
+    free(p);
+    mix64x4(rng);
 }
 
 static void
@@ -260,7 +344,7 @@ main(int argc, char **argv)
     }
 
     if (!seeded)
-        rng_init(rng, sizeof(rng));
+        rng_init(rng);
 
     if (generate)
         hash_gen(&cur, rng);
@@ -280,7 +364,8 @@ main(int argc, char **argv)
         best = cur;
         best_score = cur_score;
 
-        for (int i = 0; i <= N; i++) {
+        /* Explore around shifts */
+        for (int i = 0; i <= HASHN; i++) {
             /* In theory the shift could drift above 31 or below 1, but
              * in practice it would never get this far since these would
              * be terrible hashes.
@@ -305,7 +390,8 @@ main(int argc, char **argv)
             }
         }
 
-        for (int i = 0; i < N; i++) {
+        /* Explore around constants */
+        for (int i = 0; i < HASHN; i++) {
             for (int d = -CONST_RANGE; d <= +CONST_RANGE; d += 2) {
                 if (d == 0) continue;
                 struct hash tmp = cur;
@@ -327,18 +413,21 @@ main(int argc, char **argv)
         }
 
         if (found) {
+            /* Move to the lowest item found */
             if (quiet < 1)
                 puts("CLIMB");
             last = cur;
             cur = best;
             cur_score = best_score;
         } else if (one_shot) {
+            /* Hit local minima, exit */
             if (quiet < 1)
                 puts("DONE");
             hash_print(&cur);
             printf(" = %.17g\n", cur_score);
             break;
         } else {
+            /* Hit local minima, reset */
             if (quiet < 1)
                 puts("RESET");
             hash_print(&cur);
