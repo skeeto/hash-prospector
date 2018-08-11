@@ -199,10 +199,11 @@ mix64x4(uint64_t x[4])
 static void
 usage(FILE *f)
 {
-    fprintf(f, "usage: hillclimb [-hq] [-p INIT] [-x SEED]\n");
+    fprintf(f, "usage: hillclimb [-hqs] [-p INIT] [-x SEED]\n");
     fprintf(f, "  -h       Print this message and exit\n");
     fprintf(f, "  -p INIT  Provide an initial hash function\n");
-    fprintf(f, "  -q       Quit after finding a local minima\n");
+    fprintf(f, "  -q       Print less information (quiet)\n");
+    fprintf(f, "  -s       Quit after finding a local minima\n");
     fprintf(f, "  -x SEED  Seed PRNG from a string (up to 32 bytes)\n");
 }
 
@@ -214,10 +215,11 @@ main(int argc, char **argv)
     struct hash cur, last = {0};
     int generate = 1;
     int one_shot = 0;
+    int quiet = 0;
     double cur_score = -1;
 
     int option;
-    while ((option = getopt(argc, argv, "hp:qx:")) != -1) {
+    while ((option = getopt(argc, argv, "hp:qsx:")) != -1) {
         switch (option) {
             case 'h': {
                 usage(stdout);
@@ -231,6 +233,9 @@ main(int argc, char **argv)
                 generate = 0;
             } break;
             case 'q': {
+                quiet++;
+            } break;
+            case 's': {
                 one_shot = 1;
             } break;
             case 'x': {
@@ -265,10 +270,12 @@ main(int argc, char **argv)
         struct hash best;
         double best_score;
 
-        hash_print(&cur);
+        if (quiet < 2)
+            hash_print(&cur);
         if (cur_score < 0)
             cur_score = hash_bias32(&cur);
-        printf(" = %.17g\n", cur_score);
+        if (quiet < 2)
+            printf(" = %.17g\n", cur_score);
 
         best = cur;
         best_score = cur_score;
@@ -283,10 +290,13 @@ main(int argc, char **argv)
                 struct hash tmp = cur;
                 tmp.s[i] += d;
                 if (hash_equal(&tmp, &last)) continue;
-                printf("  ");
-                hash_print(&tmp);
+                if (quiet <= 0) {
+                    printf("  ");
+                    hash_print(&tmp);
+                }
                 double score = hash_bias32(&tmp);
-                printf(" = %.17g\n", score);
+                if (quiet <= 0)
+                    printf(" = %.17g\n", score);
                 if (score < best_score) {
                     best_score = score;
                     best = tmp;
@@ -301,10 +311,13 @@ main(int argc, char **argv)
                 struct hash tmp = cur;
                 tmp.c[i] += d;
                 if (hash_equal(&tmp, &last)) continue;
-                printf("  ");
-                hash_print(&tmp);
+                if (quiet <= 0) {
+                    printf("  ");
+                    hash_print(&tmp);
+                }
                 double score = hash_bias32(&tmp);
-                printf(" = %.17g\n", score);
+                if (quiet <= 0)
+                    printf(" = %.17g\n", score);
                 if (score < best_score) {
                     best_score = score;
                     best = tmp;
@@ -314,17 +327,22 @@ main(int argc, char **argv)
         }
 
         if (found) {
-            puts("CLIMB");
+            if (quiet < 1)
+                puts("CLIMB");
             last = cur;
             cur = best;
             cur_score = best_score;
         } else if (one_shot) {
-            puts("DONE");
+            if (quiet < 1)
+                puts("DONE");
             hash_print(&cur);
             printf(" = %.17g\n", cur_score);
             break;
         } else {
-            puts("RESET");
+            if (quiet < 1)
+                puts("RESET");
+            hash_print(&cur);
+            printf(" = %.17g\n", cur_score);
             last.s[0] = 0; // set to invalid
             hash_gen(&cur, rng);
             cur_score = -1;
