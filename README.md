@@ -63,22 +63,22 @@ run it like so:
     $ ./prospector -p xorr:15,mul,xorr:12,mul,xorr:15
 
 Another round of multiply-xorshift in this construction allows functions
-with carefully chosen parameters to approach the theoretical bias limit
-(bias = ~0.0217). For example, this hash function is *nearly*
-indistinguishable from a perfect PRF:
+with carefully chosen parameters to reach the theoretical bias limit
+(bias = ~0.0215). For example, this hash function is indistinguishable
+from a perfect PRF (e.g. a random permutation of all 32-bit integers):
 
 ```c
-// exact bias: 0.022829781930394154
+// exact bias: 0.021334944237993255
 uint32_t
 triple32(uint32_t x)
 {
     x ^= x >> 18;
     x *= UINT32_C(0xed5ad4bb);
-    x ^= x >> 12;
+    x ^= x >> 11;
     x *= UINT32_C(0xac4c1b51);
-    x ^= x >> 17;
-    x *= UINT32_C(0xc0a8e5d7);
-    x ^= x >> 12;
+    x ^= x >> 15;
+    x *= UINT32_C(0x31848bab);
+    x ^= x >> 14;
     return x;
 }
 ```
