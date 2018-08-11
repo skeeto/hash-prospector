@@ -34,7 +34,7 @@ check: prospector $(hashes)
 	./prospector -E -8 -l tests/splitmix64.so
 
 clean:
-	rm -f prospector $(hashes)
+	rm -f prospector genetic hillclimb $(hashes)
 
 .SUFFIXES: .so .c
 .c.so:
