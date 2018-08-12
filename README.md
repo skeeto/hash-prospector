@@ -64,15 +64,15 @@ run it like so:
 
 Another round of multiply-xorshift in this construction allows functions
 with carefully chosen parameters to reach the theoretical bias limit
-(bias = ~0.0215). For example, this hash function is indistinguishable
+(bias = ~0.021). For example, this hash function is indistinguishable
 from a perfect PRF (e.g. a random permutation of all 32-bit integers):
 
 ```c
-// exact bias: 0.021334944237993255
+// exact bias: 0.020888578919738908
 uint32_t
 triple32(uint32_t x)
 {
-    x ^= x >> 18;
+    x ^= x >> 17;
     x *= UINT32_C(0xed5ad4bb);
     x ^= x >> 11;
     x *= UINT32_C(0xac4c1b51);
