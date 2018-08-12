@@ -7,9 +7,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define HASHN       3  // number of multiplies in hash
-#define SHIFT_RANGE 1  // radius of shift search
-#define CONST_RANGE 2  // radius of const search
+#define HASHN       3    // number of multiplies in hash
+#define SHIFT_RANGE 1    // radius of shift search
+#define CONST_RANGE 2    // radius of const search
+#define QUALITY     18   // 2^N iterations of estimate samples
+#define THRESHOLD   1.95 // regenerate anything lower than this estimate
 
 static int optind = 1;
 static int opterr = 1;
@@ -183,9 +185,35 @@ hash(const struct hash *h, uint32_t x)
     return x;
 }
 
+static double
+estimate_bias32(const struct hash *f, uint64_t rng[4])
+{
+    long n = 1L << QUALITY;
+    long bins[32][32] = {{0}};
+    for (long i = 0; i < n; i++) {
+        uint32_t x = rand64(rng);
+        uint32_t h0 = hash(f, x);
+        for (int j = 0; j < 32; j++) {
+            uint32_t bit = UINT32_C(1) << j;
+            uint32_t h1 = hash(f, x ^ bit);
+            uint32_t set = h0 ^ h1;
+            for (int k = 0; k < 32; k++)
+                bins[j][k] += (set >> k) & 1;
+        }
+    }
+    double mean = 0;
+    for (int j = 0; j < 32; j++) {
+        for (int k = 0; k < 32; k++) {
+            double diff = (bins[j][k] - n / 2) / (n / 2.0);
+            mean += (diff * diff) / (32 * 32);
+        }
+    }
+    return sqrt(mean) * 1000.0;
+}
+
 #define EXACT_SPLIT 32  // must be power of two
 static double
-hash_bias32(const struct hash *f)
+exact_bias32(const struct hash *f)
 {
     int i; // declare here to work around Visual Studio issue
     long long bins[32][32] = {{0}};
@@ -216,6 +244,14 @@ hash_bias32(const struct hash *f)
         }
     }
     return sqrt(mean) * 1000.0;
+}
+
+static void
+hash_gen_strict(struct hash *h, uint64_t rng[4])
+{
+    do
+        hash_gen(h, rng);
+    while (estimate_bias32(h, rng) > THRESHOLD);
 }
 
 static uint64_t
@@ -347,7 +383,7 @@ main(int argc, char **argv)
         rng_init(rng);
 
     if (generate)
-        hash_gen(&cur, rng);
+        hash_gen_strict(&cur, rng);
 
     for (;;) {
         int found = 0;
@@ -357,7 +393,7 @@ main(int argc, char **argv)
         if (quiet < 2)
             hash_print(&cur);
         if (cur_score < 0)
-            cur_score = hash_bias32(&cur);
+            cur_score = exact_bias32(&cur);
         if (quiet < 2)
             printf(" = %.17g\n", cur_score);
 
@@ -379,7 +415,7 @@ main(int argc, char **argv)
                     printf("  ");
                     hash_print(&tmp);
                 }
-                double score = hash_bias32(&tmp);
+                double score = exact_bias32(&tmp);
                 if (quiet <= 0)
                     printf(" = %.17g\n", score);
                 if (score < best_score) {
@@ -401,7 +437,7 @@ main(int argc, char **argv)
                     printf("  ");
                     hash_print(&tmp);
                 }
-                double score = hash_bias32(&tmp);
+                double score = exact_bias32(&tmp);
                 if (quiet <= 0)
                     printf(" = %.17g\n", score);
                 if (score < best_score) {
@@ -433,7 +469,7 @@ main(int argc, char **argv)
             hash_print(&cur);
             printf(" = %.17g\n", cur_score);
             last.s[0] = 0; // set to invalid
-            hash_gen(&cur, rng);
+            hash_gen_strict(&cur, rng);
             cur_score = -1;
         }
     }
