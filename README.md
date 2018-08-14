@@ -20,11 +20,18 @@ Article: [Prospecting for Hash Functions][article]
 
 ## Discovered Hash Functions
 
+There are two useful classes of hash functions discovered by the
+prospector and the other helper utilities here. Both use an
+*xorshift-multiply-xorshift* construction, but with a different number
+of rounds.
+
+### Two round functions
+
 This 32-bit integer hash function has the lowest bias of any in this
 form ever devised. It even beats the venerable MurmurHash3 32-bit
 finalizer by a tiny margin. The hash function construction was
-discovered by the prospector, then the parameters were tuned using a
-genetic algorithm.
+discovered by the prospector, then the parameters were tuned using hill
+climbing and a genetic algorithm.
 
 ```c
 // exact bias: 0.19768193144773874
@@ -38,7 +45,36 @@ lowbias32(uint32_t x)
     x ^= x >> 17;
     return x;
 }
+
+// inverse
+uint32_t
+lowbias32_r(uint32_t x)
+{
+    x ^= x >> 17;
+    x *= UINT32_C(0x5f68b0e7);
+    x ^= x >> 16;
+    x *= UINT32_C(0x79e64925);
+    x ^= x >> 18;
+    return x;
+}
 ```
+
+Here are some alternate constants nearly as unbiased:
+
+    [16 e2d0d4cb 15 3c6ad939 15] = 0.20207553121367283
+    [17 5abe3ae5 13 65639657 16] = 0.20650238245274932
+    [16 b7b9e4ad 14 e5328a63 18] = 0.21832717182470052
+    [16 0c166973 14 99ad7299 16] = 0.22090427396118206
+    [16 5f695533 16 12e558d3 16] = 0.23112382120352101
+    [16 a72f8c9d 14 aa189b8b 16] = 0.23114381371006168
+    [16 d76531b5 13 eb08cda5 16] = 0.24091505615019371
+    [16 952f8b96 13 f0b5b4d9 16] = 0.24095657705827211
+    [17 c8a26cb3 14 11e51a2e 16] = 0.24114117830601392
+    [16 893de54a 13 3a26ba99 17] = 0.24140065800283472
+    [17 7df48b9b 14 bcd79a97 18] = 0.24276241306126728
+    [16 eea6964b 15 e709335b 16] = 0.24539011228453952
+    [16 86d2a755 15 9ab7395b 16] = 0.24699551475218956
+    [16 2c88c9a7 13 a1f2b677 16] = 0.24858972550242134
 
 This next function was discovered using only the prospector. It has a bit more
 bias than the previous function.
@@ -62,6 +98,8 @@ run it like so:
 
     $ ./prospector -p xorr:15,mul,xorr:12,mul,xorr:15
 
+### Three round functions
+
 Another round of multiply-xorshift in this construction allows functions
 with carefully chosen parameters to reach the theoretical bias limit
 (bias = ~0.021). For example, this hash function is indistinguishable
@@ -79,6 +117,62 @@ triple32(uint32_t x)
     x ^= x >> 15;
     x *= UINT32_C(0x31848bab);
     x ^= x >> 14;
+    return x;
+}
+
+// inverse
+uint32_t
+triple32_r(uint32_t x)
+{
+    x ^= x >> 14 ^ x >> 28;
+    x *= UINT32_C(0x32b21703);
+    x ^= x >> 15 ^ x >> 30;
+    x *= UINT32_C(0x469e0db1);
+    x ^= x >> 11 ^ x >> 22;
+    x *= UINT32_C(0x79a85073);
+    x ^= x >> 17;
+    return x;
+}
+```
+
+And here are some alternate constants which are nearly as unbiased:
+
+    [15 5dfa224b 14 4bee7e4b 17 930ee371 15] = 0.02184521628884813
+    [16 2bbed51b 14 cd09896b 16 38d4c587 15] = 0.022159936298777144
+    [16 45109e55 14 3b94759d 16 adf31ea5 17] = 0.022436433678417977
+    [16 13566dbb 14 59369a03 15 990f9d1b 16] = 0.022712430070797596
+
+Starting the function with a single addition with an increment breaks
+the `hash(0) = 0` issue while also lowering the bias a tiny bit further:
+
+```c
+// exact bias: 0.020829410544597495
+uint32_t
+triple32inc(uint32_t x)
+{
+    x++;
+    x ^= x >> 17;
+    x *= UINT32_C(0xed5ad4bb);
+    x ^= x >> 11;
+    x *= UINT32_C(0xac4c1b51);
+    x ^= x >> 15;
+    x *= UINT32_C(0x31848bab);
+    x ^= x >> 14;
+    return x;
+}
+
+// inverse
+uint32_t
+triple32inc_r(uint32_t x)
+{
+    x ^= x >> 14 ^ x >> 28;
+    x *= UINT32_C(0x32b21703);
+    x ^= x >> 15 ^ x >> 30;
+    x *= UINT32_C(0x469e0db1);
+    x ^= x >> 11 ^ x >> 22;
+    x *= UINT32_C(0x79a85073);
+    x ^= x >> 17;
+    x--;
     return x;
 }
 ```
