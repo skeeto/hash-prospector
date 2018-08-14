@@ -142,8 +142,8 @@ And here are some alternate constants which are nearly as unbiased:
     [16 45109e55 14 3b94759d 16 adf31ea5 17] = 0.022436433678417977
     [16 13566dbb 14 59369a03 15 990f9d1b 16] = 0.022712430070797596
 
-Starting the function with a single addition with an increment breaks
-the `hash(0) = 0` issue while also lowering the bias a tiny bit further:
+Prepending an increment to `triple32` breaks the `hash(0) = 0` issue while
+also lowering the bias a tiny bit further:
 
 ```c
 // exact bias: 0.020829410544597495
