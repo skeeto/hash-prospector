@@ -316,11 +316,31 @@ rng_init(uint64_t rng[4])
     mix64x4(rng);
 }
 
+/* Modular multiplicative inverse (32-bit) */
+static uint32_t
+modinv32(uint32_t x)
+{
+    unsigned i = 0;
+    uint32_t s[2][2] = {{-1, 1}, {0, 0}};
+    uint32_t r[2][2] = {{-x, x}, {0, 0}};
+    do {
+        unsigned c =   i % 2;
+        unsigned n = ++i % 2;
+        uint32_t q = r[c][1] / r[c][0];
+        r[n][0] = r[c][1] - q * r[c][0];
+        r[n][1] = r[c][0];
+        s[n][0] = s[c][1] - q * s[c][0];
+        s[n][1] = s[c][0];
+    } while (r[i % 2][0]);
+    return s[i % 2][1];
+}
+
 static void
 usage(FILE *f)
 {
     fprintf(f, "usage: hillclimb [-hqs] [-p INIT] [-x SEED]\n");
     fprintf(f, "  -h       Print this message and exit\n");
+    fprintf(f, "  -I       Invert given pattern (-p) an quit\n");
     fprintf(f, "  -p INIT  Provide an initial hash function\n");
     fprintf(f, "  -q       Print less information (quiet)\n");
     fprintf(f, "  -s       Quit after finding a local minima\n");
@@ -336,14 +356,18 @@ main(int argc, char **argv)
     int generate = 1;
     int one_shot = 0;
     int quiet = 0;
+    int invert = 0;
     double cur_score = -1;
 
     int option;
-    while ((option = getopt(argc, argv, "hp:qsx:")) != -1) {
+    while ((option = getopt(argc, argv, "hIp:qsx:")) != -1) {
         switch (option) {
             case 'h': {
                 usage(stdout);
                 exit(EXIT_SUCCESS);
+            } break;
+            case 'I': {
+                invert = 1;
             } break;
             case 'p': {
                 if (!hash_parse(&cur, optarg)) {
@@ -377,6 +401,32 @@ main(int argc, char **argv)
                 usage(stderr);
                 exit(EXIT_FAILURE);
         }
+    }
+
+    if (invert) {
+        if (generate) {
+            fprintf(stderr, "hillclimb: -I requires -p\n");
+            exit(EXIT_FAILURE);
+        }
+        printf("uint32_t\nhash_r(uint32_t x)\n{\n");
+        for (int i = 0; i < HASHN * 2 + 1; i++) {
+            switch (i & 1) {
+                case 0: {
+                    int s = HASHN - i / 2;
+                    printf("    x ^=");
+                    for (int i = cur.s[s]; i < 32; i += cur.s[s])
+                        printf(" %sx << %d", i == cur.s[s] ? "" : "^ ", i);
+                    printf(";\n");
+                } break;
+                case 1: {
+                    int c = HASHN - (i + 1) / 2;
+                    unsigned long inv = modinv32(cur.c[c]);
+                    printf("    x *= UINT32_C(0x%08lx);\n", inv);
+                } break;
+            }
+        }
+        printf("}\n");
+        exit(EXIT_SUCCESS);
     }
 
     if (!seeded)
