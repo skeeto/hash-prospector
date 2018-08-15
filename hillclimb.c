@@ -320,20 +320,13 @@ rng_init(uint64_t rng[4])
 static uint32_t
 modinv32(uint32_t x)
 {
-    uint32_t s0 = -1;
-    uint32_t s1 = +1;
-    uint32_t r0 = -x;
-    uint32_t r1 = +x;
-    do {
-        uint32_t q = r1 / r0;
-        uint32_t t = r0;
-        r0 = r1 - q * r0;
-        r1 = t;
-        t = s0;
-        s0 = s1 - q * s0;
-        s1 = t;
-    } while (r0);
-    return s1;
+    uint32_t a = x;
+    x += x - a * x * x;
+    x += x - a * x * x;
+    x += x - a * x * x;
+    x += x - a * x * x;
+    x += x - a * x * x;
+    return x;
 }
 
 static void
