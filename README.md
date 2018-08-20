@@ -34,15 +34,15 @@ discovered by the prospector, then the parameters were tuned using hill
 climbing and a genetic algorithm.
 
 ```c
-// exact bias: 0.19768193144773874
+// exact bias: 0.17353355999581582
 uint32_t
 lowbias32(uint32_t x)
 {
-    x ^= x >> 18;
-    x *= UINT32_C(0xa136aaad);
     x ^= x >> 16;
-    x *= UINT32_C(0x9f6d62d7);
-    x ^= x >> 17;
+    x *= UINT32_C(0x7feb352d);
+    x ^= x >> 15;
+    x *= UINT32_C(0x846ca68b);
+    x ^= x >> 16;
     return x;
 }
 
@@ -50,23 +50,27 @@ lowbias32(uint32_t x)
 uint32_t
 lowbias32_r(uint32_t x)
 {
-    x ^= x >> 17;
-    x *= UINT32_C(0x5f68b0e7);
     x ^= x >> 16;
-    x *= UINT32_C(0x79e64925);
-    x ^= x >> 18;
+    x *= UINT32_C(0x43021123);
+    x ^= x >> 15 ^ x >> 30;
+    x *= UINT32_C(0x1d69e2a5);
+    x ^= x >> 16;
     return x;
 }
 ```
 
 Here are some alternate constants nearly as unbiased:
 
+    [18 a136aaad 16 9f6d62d7 17] = 0.19768193144773874
+    [17 24f4d2cd 15 1ba3b969 16] = 0.1978948970645365
     [16 e2d0d4cb 15 3c6ad939 15] = 0.20207553121367283
     [17 5abe3ae5 13 65639657 16] = 0.20650238245274932
+    [16 122eacad 15 4d11c547 16] = 0.21555037885075676
     [16 b7b9e4ad 14 e5328a63 18] = 0.21832717182470052
     [16 0c166973 14 99ad7299 16] = 0.22090427396118206
     [15 a3d94b57 15 f2c5b5d1 15] = 0.22113662508346502
     [15 4985c6a9 15 07624b2f 16] = 0.22259897535212997
+    [16 00826d4b 16 ce6b73a7 17] = 0.22576813455524694
     [16 5f695533 16 12e558d3 16] = 0.23112382120352101
     [16 a72f8c9d 14 aa189b8b 16] = 0.23114381371006168
     [16 d76531b5 13 eb08cda5 16] = 0.24091505615019371
@@ -142,6 +146,7 @@ And here are some alternate constants which are nearly as unbiased:
     [18 4260bb47 13 27e8e1ed 15 9d48a33b 15] = 0.021576730651802156
     [15 5dfa224b 14 4bee7e4b 17 930ee371 15] = 0.02184521628884813
     [16 b1a89b33 14 09136aaf 16 5f2a44a7 15] = 0.021998624107282542
+    [15 4df8395b 15 466b428b 16 b4b2868b 16] = 0.022140187420461286
     [16 2bbed51b 14 cd09896b 16 38d4c587 15] = 0.022159936298777144
     [16 0ab694cd 14 4c139e47 16 11a42c3b 16] = 0.02220928191220355
     [16 66e756d5 14 b5f5a9cd 16 84e56b11 16] = 0.022372957847491555
@@ -151,6 +156,8 @@ And here are some alternate constants which are nearly as unbiased:
     [16 6cdb9705 14 4d58d2ed 14 c8642b37 16] = 0.022504626537729222
     [15 fc54c453 13 08213789 15 669f96eb 16] = 0.022591114646032095
     [16 13566dbb 14 59369a03 15 990f9d1b 16] = 0.022712430070797596
+    [16 699f272b 14 09c01023 16 39bd48c3 15] = 0.022854175321846512
+    [16 7cb04f65 14 9b96da73 16 83625687 15] = 0.022906573700088178
 
 Prepending an increment to `triple32` breaks the `hash(0) = 0` issue while
 also lowering the bias a tiny bit further:
