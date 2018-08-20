@@ -332,7 +332,8 @@ modinv32(uint32_t x)
 static void
 usage(FILE *f)
 {
-    fprintf(f, "usage: hillclimb [-hqs] [-p INIT] [-x SEED]\n");
+    fprintf(f, "usage: hillclimb [-EhIqs] [-p INIT] [-x SEED]\n");
+    fprintf(f, "  -E       Evaluate given pattern (-p)\n");
     fprintf(f, "  -h       Print this message and exit\n");
     fprintf(f, "  -I       Invert given pattern (-p) an quit\n");
     fprintf(f, "  -p INIT  Provide an initial hash function\n");
@@ -351,11 +352,15 @@ main(int argc, char **argv)
     int one_shot = 0;
     int quiet = 0;
     int invert = 0;
+    int evaluate = 0;
     double cur_score = -1;
 
     int option;
-    while ((option = getopt(argc, argv, "hIp:qsx:")) != -1) {
+    while ((option = getopt(argc, argv, "EhIp:qsx:")) != -1) {
         switch (option) {
+            case 'E': {
+                evaluate = 1;
+            } break;
             case 'h': {
                 usage(stdout);
                 exit(EXIT_SUCCESS);
@@ -420,6 +425,16 @@ main(int argc, char **argv)
             }
         }
         printf("    return x;\n}\n");
+        exit(EXIT_SUCCESS);
+    }
+
+    if (evaluate) {
+        if (generate) {
+            fprintf(stderr, "hillclimb: -E requires -p\n");
+            exit(EXIT_FAILURE);
+        }
+        hash_print(&cur);
+        printf(" = %.17g\n", exact_bias32(&cur));
         exit(EXIT_SUCCESS);
     }
 
