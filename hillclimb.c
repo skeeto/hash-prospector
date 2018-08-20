@@ -409,7 +409,7 @@ main(int argc, char **argv)
                     int s = HASHN - i / 2;
                     printf("    x ^=");
                     for (int i = cur.s[s]; i < 32; i += cur.s[s])
-                        printf(" %sx << %d", i == cur.s[s] ? "" : "^ ", i);
+                        printf(" %sx >> %d", i == cur.s[s] ? "" : "^ ", i);
                     printf(";\n");
                 } break;
                 case 1: {
@@ -419,7 +419,7 @@ main(int argc, char **argv)
                 } break;
             }
         }
-        printf("}\n");
+        printf("    return x;\n}\n");
         exit(EXIT_SUCCESS);
     }
 
