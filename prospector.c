@@ -828,7 +828,10 @@ main(int argc, char **argv)
     /* Get a unique seed */
     FILE *urandom = fopen("/dev/urandom", "rb");
     if (urandom) {
-        fread(rng, 1, sizeof(rng), urandom);
+        if (!fread(rng, sizeof(rng), 1, urandom)) {
+            fputs("prospector: failed to read /dev/urandom\n", stderr);
+            exit(EXIT_FAILURE);
+        }
         fclose(urandom);
     }
 
