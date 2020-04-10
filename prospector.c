@@ -525,7 +525,12 @@ execbuf_lock(void *buf)
             wxr_enabled = WXR_ENABLED;
             /* FALLTHROUGH */
         case WXR_ENABLED:
-            mprotect(buf, 4096, PROT_READ | PROT_EXEC);
+            if (mprotect(buf, 4096, PROT_READ | PROT_EXEC)) {
+                fprintf(stderr,
+                        "prospector: mprotect(PROT_EXEC) failed: %s\n",
+                        strerror(errno));
+                exit(EXIT_FAILURE);
+            }
             break;
         case WXR_DISABLED:
             break;
