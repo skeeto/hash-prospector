@@ -1,4 +1,4 @@
-#define _POSIX_C_SOURCE 200112L
+#define _DEFAULT_SOURCE // MAP_ANONYMOUS
 #include <math.h>
 #include <errno.h>
 #include <stdio.h>
@@ -495,13 +495,9 @@ hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
 static void *
 execbuf_alloc(void)
 {
-    int fd = open("/dev/zero", O_RDWR);
-    if (fd == -1) {
-        fprintf(stderr, "prospector: %s\n", strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-    void *p = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
-    close(fd);
+    int prot = PROT_READ | PROT_WRITE;
+    int flags = MAP_PRIVATE | MAP_ANONYMOUS;
+    void *p = mmap(NULL, 4096, prot, flags, -1, 0);
     if (p == MAP_FAILED) {
         fprintf(stderr, "prospector: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
