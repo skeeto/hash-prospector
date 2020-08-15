@@ -672,17 +672,17 @@ parse_operand(struct hf_op *op, char *buf)
         case HF32_XOR:
         case HF32_MUL:
         case HF32_ADD:
-        case HF32_ROT:
         case HF64_XOR:
         case HF64_MUL:
         case HF64_ADD:
-        case HF64_ROT:
             op->constant = strtoull(buf, 0, 16);
             return 1;
+        case HF32_ROT:
         case HF32_XORL:
         case HF32_XORR:
         case HF32_ADDL:
         case HF32_SUBL:
+        case HF64_ROT:
         case HF64_XORL:
         case HF64_XORR:
         case HF64_ADDL:
