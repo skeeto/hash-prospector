@@ -39,9 +39,9 @@ uint32_t
 lowbias32(uint32_t x)
 {
     x ^= x >> 16;
-    x *= UINT32_C(0x7feb352d);
+    x *= 0x7feb352d;
     x ^= x >> 15;
-    x *= UINT32_C(0x846ca68b);
+    x *= 0x846ca68b;
     x ^= x >> 16;
     return x;
 }
@@ -51,9 +51,9 @@ uint32_t
 lowbias32_r(uint32_t x)
 {
     x ^= x >> 16;
-    x *= UINT32_C(0x43021123);
+    x *= 0x43021123;
     x ^= x >> 15 ^ x >> 30;
-    x *= UINT32_C(0x1d69e2a5);
+    x *= 0x1d69e2a5;
     x ^= x >> 16;
     return x;
 }
@@ -114,9 +114,9 @@ uint32_t
 prospector32(uint32_t x)
 {
     x ^= x >> 15;
-    x *= UINT32_C(0x2c1b3c6d);
+    x *= 0x2c1b3c6d;
     x ^= x >> 12;
-    x *= UINT32_C(0x297a2d39);
+    x *= 0x297a2d39;
     x ^= x >> 15;
     return x;
 }
@@ -140,11 +140,11 @@ uint32_t
 triple32(uint32_t x)
 {
     x ^= x >> 17;
-    x *= UINT32_C(0xed5ad4bb);
+    x *= 0xed5ad4bb;
     x ^= x >> 11;
-    x *= UINT32_C(0xac4c1b51);
+    x *= 0xac4c1b51;
     x ^= x >> 15;
-    x *= UINT32_C(0x31848bab);
+    x *= 0x31848bab;
     x ^= x >> 14;
     return x;
 }
@@ -154,11 +154,11 @@ uint32_t
 triple32_r(uint32_t x)
 {
     x ^= x >> 14 ^ x >> 28;
-    x *= UINT32_C(0x32b21703);
+    x *= 0x32b21703;
     x ^= x >> 15 ^ x >> 30;
-    x *= UINT32_C(0x469e0db1);
+    x *= 0x469e0db1;
     x ^= x >> 11 ^ x >> 22;
-    x *= UINT32_C(0x79a85073);
+    x *= 0x79a85073;
     x ^= x >> 17;
     return x;
 }
@@ -218,11 +218,11 @@ triple32inc(uint32_t x)
 {
     x++;
     x ^= x >> 17;
-    x *= UINT32_C(0xed5ad4bb);
+    x *= 0xed5ad4bb;
     x ^= x >> 11;
-    x *= UINT32_C(0xac4c1b51);
+    x *= 0xac4c1b51;
     x ^= x >> 15;
-    x *= UINT32_C(0x31848bab);
+    x *= 0x31848bab;
     x ^= x >> 14;
     return x;
 }
@@ -232,11 +232,11 @@ uint32_t
 triple32inc_r(uint32_t x)
 {
     x ^= x >> 14 ^ x >> 28;
-    x *= UINT32_C(0x32b21703);
+    x *= 0x32b21703;
     x ^= x >> 15 ^ x >> 30;
-    x *= UINT32_C(0x469e0db1);
+    x *= 0x469e0db1;
     x ^= x >> 11 ^ x >> 22;
-    x *= UINT32_C(0x79a85073);
+    x *= 0x79a85073;
     x ^= x >> 17;
     x--;
     return x;

@@ -289,10 +289,10 @@ mix64x4(uint64_t x[4])
 {
     uint64_t i = 0xf81db9ba6dabee4e;
     uint64_t m = 0xb1d9e3fbc08321db;
-    x[0] = hash64(x[0] + UINT64_C(0x347534cdcf0982b6), m);
-    x[1] = hash64(x[1] + UINT64_C(0x975e2ee8f0f23aa8), m += i);
-    x[2] = hash64(x[2] + UINT64_C(0x7baf736c6c769a0b), m += i);
-    x[3] = hash64(x[3] + UINT64_C(0x884afc96accb90d9), m += i);
+    x[0] = hash64(x[0] + 0x347534cdcf0982b6, m);
+    x[1] = hash64(x[1] + 0x975e2ee8f0f23aa8, m += i);
+    x[2] = hash64(x[2] + 0x7baf736c6c769a0b, m += i);
+    x[3] = hash64(x[3] + 0x884afc96accb90d9, m += i);
     #define ROUND64(a, b, c, d) \
         x[b] = mix64(hash64(x[a], m += i), x[b]); \
         x[c] = mix64(hash64(x[a], m += i), x[c]); \
@@ -420,7 +420,7 @@ main(int argc, char **argv)
                 case 1: {
                     int c = HASHN - (i + 1) / 2;
                     unsigned long inv = modinv32(cur.c[c]);
-                    printf("    x *= UINT32_C(0x%08lx);\n", inv);
+                    printf("    x *= 0x%08lx;\n", inv);
                 } break;
             }
         }

@@ -9,9 +9,9 @@ uint64_t
 hash(uint64_t x)
 {
     x ^= x >> 32;
-    x *= UINT64_C(0xd6e8feb86659fd93);
+    x *= 0xd6e8feb86659fd93;
     x ^= x >> 32;
-    x *= UINT64_C(0xd6e8feb86659fd93);
+    x *= 0xd6e8feb86659fd93;
     x ^= x >> 32;
     return x;
 }
@@ -21,9 +21,9 @@ uint64_t
 unhash(uint64_t x)
 {
     x ^= x >> 32;
-    x *= UINT64_C(0xcfee444d8b59a89b);
+    x *= 0xcfee444d8b59a89b;
     x ^= x >> 32;
-    x *= UINT64_C(0xcfee444d8b59a89b);
+    x *= 0xcfee444d8b59a89b;
     x ^= x >> 32;
     return x;
 }

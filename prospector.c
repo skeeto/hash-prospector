@@ -194,13 +194,13 @@ hf_print(const struct hf_op *op, char *buf)
             sprintf(buf, "x  = ~x;");
             break;
         case HF32_XOR:
-            sprintf(buf, "x ^= UINT32_C(0x%08llx);", c);
+            sprintf(buf, "x ^= 0x%08llx;", c);
             break;
         case HF32_MUL:
-            sprintf(buf, "x *= UINT32_C(0x%08llx);", c);
+            sprintf(buf, "x *= 0x%08llx;", c);
             break;
         case HF32_ADD:
-            sprintf(buf, "x += UINT32_C(0x%08llx);", c);
+            sprintf(buf, "x += 0x%08llx;", c);
             break;
         case HF32_ROT:
             sprintf(buf, "x  = (x << %llu) | (x >> %lld);", c, 32 - c);
@@ -218,13 +218,13 @@ hf_print(const struct hf_op *op, char *buf)
             sprintf(buf, "x -= x << %llu;", c);
             break;
         case HF64_XOR:
-            sprintf(buf, "x ^= UINT64_C(0x%016llx);", c);
+            sprintf(buf, "x ^= 0x%016llx;", c);
             break;
         case HF64_MUL:
-            sprintf(buf, "x *= UINT64_C(0x%016llx);", c);
+            sprintf(buf, "x *= 0x%016llx;", c);
             break;
         case HF64_ADD:
-            sprintf(buf, "x += UINT64_C(0x%016llx);", c);
+            sprintf(buf, "x += 0x%016llx;", c);
             break;
         case HF64_ROT:
             sprintf(buf, "x  = (x << %llu) | (x >> %lld);", c, 64 - c);
