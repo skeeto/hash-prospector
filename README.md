@@ -59,10 +59,11 @@ lowbias32_r(uint32_t x)
 }
 ```
 
-Here are some alternate constants with low bias:
+More 2-round constants with low bias:
 
     [17 9e485565 16 ef1d6b47 16] = 0.16143129787074881
     [16 a812d533 15 b278e4ad 17] = 0.16540778981744320
+    [16 7feb352d 15 846ca68b 16] = 0.17353355999581582
     [16 dc63b4d3 15 2c32b9a9 15] = 0.17368589564800074
     [16 ac10d4eb 15 9d51b169 16] = 0.17676510450127819
     [15 f15f5959 14 7db29359 16] = 0.18103205436627479
@@ -163,8 +164,9 @@ triple32_r(uint32_t x)
 }
 ```
 
-And here are some alternate constants which are nearly as unbiased:
+More 3-round constants with low bias:
 
+    [17 ed5ad4bb 11 ac4c1b51 15 31848bab 14] = 0.020888578919738908
     [16 aeccedab 14 ac613e37 16 19c89935 17] = 0.021246568167078764
     [16 236f7153 12 33cd8663 15 3e06b66b 16] = 0.021280991798512679
     [18 4260bb47 13 27e8e1ed 15 9d48a33b 15] = 0.021576730651802156
