@@ -35,6 +35,7 @@ enum hf_type {
     HF32_ADD,  // x += const32
     HF32_ROT,  // x  = (x << const5) | (x >> (32 - const5))
     HF32_NOT,  // x  = ~x
+    HF32_BSWAP, //x  = bswap32(x)
     HF32_XORL, // x ^= x << const5
     HF32_XORR, // x ^= x >> const5
     HF32_ADDL, // x += x << const5
@@ -45,6 +46,7 @@ enum hf_type {
     HF64_ADD,
     HF64_ROT,
     HF64_NOT,
+    HF64_BSWAP,
     HF64_XORL,
     HF64_XORR,
     HF64_ADDL,
@@ -57,6 +59,7 @@ static const char hf_names[][8] = {
     [HF32_ADD]  = "32add",
     [HF32_ROT]  = "32rot",
     [HF32_NOT]  = "32not",
+    [HF32_BSWAP]= "32bswap",
     [HF32_XORL] = "32xorl",
     [HF32_XORR] = "32xorr",
     [HF32_ADDL] = "32addl",
@@ -66,6 +69,7 @@ static const char hf_names[][8] = {
     [HF64_ADD]  = "64add",
     [HF64_ROT]  = "64rot",
     [HF64_NOT]  = "64not",
+    [HF64_BSWAP]= "64bswap",
     [HF64_XORL] = "64xorl",
     [HF64_XORR] = "64xorr",
     [HF64_ADDL] = "64addl",
@@ -88,6 +92,8 @@ hf_randomize(struct hf_op *op, uint64_t s[2])
     switch (op->type) {
         case HF32_NOT:
         case HF64_NOT:
+        case HF32_BSWAP:
+        case HF64_BSWAP:
             op->constant = 0;
             break;
         case HF32_XOR:
@@ -140,11 +146,13 @@ hf_type_valid(enum hf_type a, enum hf_type b)
 {
     switch (a) {
         case HF32_NOT:
+        case HF32_BSWAP:
         case HF32_XOR:
         case HF32_MUL:
         case HF32_ADD:
         case HF32_ROT:
         case HF64_NOT:
+        case HF64_BSWAP:
         case HF64_XOR:
         case HF64_MUL:
         case HF64_ADD:
@@ -192,6 +200,12 @@ hf_print(const struct hf_op *op, char *buf)
         case HF32_NOT:
         case HF64_NOT:
             sprintf(buf, "x  = ~x;");
+            break;
+        case HF32_BSWAP:
+            sprintf(buf, "x  = __builtin_bswap32(x);");
+            break;
+        case HF64_BSWAP:
+            sprintf(buf, "x  = __builtin_bswap64(x);");
             break;
         case HF32_XOR:
             sprintf(buf, "x ^= 0x%08llx;", c);
@@ -280,6 +294,11 @@ hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
                 *buf++ = 0xf7;
                 *buf++ = 0xd0;
                 break;
+            case HF32_BSWAP:
+                /* bswap eax */
+                *buf++ = 0x0f;
+                *buf++ = 0xc8;
+                break;
             case HF32_XOR:
                 /* xor eax, imm32 */
                 *buf++ = 0x35;
@@ -364,6 +383,12 @@ hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
                 *buf++ = 0x48;
                 *buf++ = 0xf7;
                 *buf++ = 0xd0;
+                break;
+            case HF64_BSWAP:
+                /* bswap rax */
+                *buf++ = 0x48;
+                *buf++ = 0x0f;
+                *buf++ = 0xc8;
                 break;
             case HF64_XOR:
                 /* mov rdi, imm64 */
@@ -668,6 +693,8 @@ parse_operand(struct hf_op *op, char *buf)
     switch (op->type) {
         case HF32_NOT:
         case HF64_NOT:
+        case HF32_BSWAP:
+        case HF64_BSWAP:
             return 0;
         case HF32_XOR:
         case HF32_MUL:
