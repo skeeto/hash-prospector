@@ -35,7 +35,7 @@ enum hf_type {
     HF32_ADD,  // x += const32
     HF32_ROT,  // x  = (x << const5) | (x >> (32 - const5))
     HF32_NOT,  // x  = ~x
-    HF32_BSWAP, //x  = bswap32(x)
+    HF32_BSWAP,// x  = bswap32(x)
     HF32_XORL, // x ^= x << const5
     HF32_XORR, // x ^= x >> const5
     HF32_ADDL, // x += x << const5
