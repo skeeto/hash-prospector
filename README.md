@@ -294,6 +294,71 @@ uniquely special and particularly useful. The generator is very unlikely
 to generate the one correct constant for the XOR operator that achieves
 the same effect.
 
+## 16-bit hashes
+
+Because the constraints are different for 16-bit hashes there's a separate
+tool for generating these hashes: `hp16`. Unlike the 32-bit / 64-bit
+prospector, this implementation is fully portable and will run on just
+about any system. It's also capable of generating and evaluating 128kiB
+s-boxes.
+
+Since 16-bit hashes are more likely to be needed on machines that lack
+multiplication or rotation instructions, these operations can be omitted
+during exploration (`-m`, `-r`).
+
+Some interesting results so far:
+
+```c
+// 2-round xorshift-multiply (-Xn2)
+// bias = 0.010731154975362086
+uint16_t hash16_xm2(uint16_t x)
+{
+    x ^= x >> 7;
+    x *= 0x5dd3U;
+    x ^= x >> 6;
+    x *= 0xb369U;
+    x ^= x >> 8;
+    return x;
+}
+
+// 3-round xorshift-multiply (-Xn3)
+// bias = 0.0049800898370403858
+uint16_t hash16_xm3(uint16_t x)
+{
+    x ^= x >> 7;
+    x *= 0x21b7U;
+    x ^= x >> 5;
+    x *= 0x5755U;
+    x ^= x >> 9;
+    x *= 0x4aa9U;
+    x ^= x >> 7;
+    return x;
+}
+
+// No multiplication or rotation (-Imrn7)
+// bias = 0.027310607826676686
+uint16_t hash16_s7(uint16_t x)
+{
+    x ^= x >> 3;
+    x -= (unsigned)x << 7;
+    x ^= x >> 2;
+    x += (unsigned)x << 3;
+    x ^= x >> 5;
+    x += (unsigned)x << 4;
+    x ^= x >> 10;
+    return x;
+}
+```
+
+A good 3-round xorshift hash (a short search via `hp16 -Xn3`) is a close
+approximation of a good s-box (i.e. `hp16 -S`).
+
+Be mindful of C integer promotion rules when doing 16-bit operations. For
+instance, on 32-bit implementations unsigned 16-bit operands will be
+promoted to signed 32-bit integers, leading to incorrect results in
+certain cases. The C programs printed by this program are careful to
+promote 16-bit operations to "unsigned int" where needed.
+
 
 [article]: https://nullprogram.com/blog/2018/07/31/
 [jenkins]: http://burtleburtle.net/bob/hash/integer.html

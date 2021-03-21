@@ -3,7 +3,7 @@ CFLAGS  = -std=c99 -Wall -Wextra -march=native -O3 -ggdb3 -fopenmp
 LDFLAGS =
 LDLIBS  = -lm -ldl
 
-compile: prospector genetic hillclimb
+compile: prospector genetic hillclimb hp16
 
 prospector: prospector.c
 	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ prospector.c $(LDLIBS)
@@ -13,6 +13,9 @@ genetic: genetic.c
 
 hillclimb: hillclimb.c
 	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ hillclimb.c $(LDLIBS)
+
+hp16: hp16.c
+	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ hp16.c $(LDLIBS)
 
 tests/degski64.so: tests/degski64.c
 tests/h2hash32.so: tests/h2hash32.c
@@ -34,7 +37,7 @@ check: prospector $(hashes)
 	./prospector -E -8 -l tests/splitmix64.so
 
 clean:
-	rm -f prospector genetic hillclimb $(hashes)
+	rm -f prospector genetic hillclimb hp16 $(hashes)
 
 .SUFFIXES: .so .c
 .c.so:
