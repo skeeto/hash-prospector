@@ -310,27 +310,27 @@ Some interesting results so far:
 
 ```c
 // 2-round xorshift-multiply (-Xn2)
-// bias = 0.010731154975362086
+// bias = 0.0086477226635588884
 uint16_t hash16_xm2(uint16_t x)
 {
-    x ^= x >> 7;
-    x *= 0x5dd3U;
-    x ^= x >> 6;
-    x *= 0xb369U;
     x ^= x >> 8;
+    x *= 0xcf53U;
+    x ^= x >> 7;
+    x *= 0xf4cbU;
+    x ^= x >> 10;
     return x;
 }
 
 // 3-round xorshift-multiply (-Xn3)
-// bias = 0.0049800898370403858
-uint16_t hash16_xm3(uint16_t x)
+// bias = 0.0047210974467451015
+uint16_t hash_xm3(uint16_t x)
 {
     x ^= x >> 7;
-    x *= 0x21b7U;
-    x ^= x >> 5;
-    x *= 0x5755U;
-    x ^= x >> 9;
-    x *= 0x4aa9U;
+    x *= 0xacddU;
+    x ^= x >> 3;
+    x *= 0xe69fU;
+    x ^= x >> 7;
+    x *= 0x84d3U;
     x ^= x >> 7;
     return x;
 }
@@ -339,13 +339,21 @@ uint16_t hash16_xm3(uint16_t x)
 // bias = 0.027310607826676686
 uint16_t hash16_s7(uint16_t x)
 {
-    x ^= x >> 3;
-    x -= (unsigned)x << 7;
-    x ^= x >> 2;
-    x += (unsigned)x << 3;
-    x ^= x >> 5;
-    x += (unsigned)x << 4;
+    x ^= x >>  3; x -= x << 7;
+    x ^= x >>  2; x += x << 3;
+    x ^= x >>  5; x += x << 4;
     x ^= x >> 10;
+    return x;
+}
+
+// No multiplication or rotation (-Imrn8)
+// bias = 0.022256867459989432
+uint16_t hash16_s8(uint16_t x)
+{
+    x += x <<  5; x ^= x >> 7;
+    x += x <<  5; x ^= x >> 3;
+    x += x <<  1; x ^= x >> 3;
+    x ^= x << 10; x ^= x >> 6;
     return x;
 }
 ```
