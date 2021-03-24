@@ -323,7 +323,7 @@ uint16_t hash16_xm2(uint16_t x)
 
 // 3-round xorshift-multiply (-Xn3)
 // bias = 0.0047210974467451015
-uint16_t hash_xm3(uint16_t x)
+uint16_t hash16_xm3(uint16_t x)
 {
     x ^= x >> 7;
     x *= 0xacddU;
@@ -336,23 +336,12 @@ uint16_t hash_xm3(uint16_t x)
 }
 
 // No multiplication or rotation (-Imrn6)
-// bias = 0.031608153387950075
+// bias = 0.025109145303048266
 uint16_t hash16_s6(uint16_t x)
 {
-    x += x << 7; x ^= x >> 8;
+    x -= x << 7; x ^= x >> 8;
     x += x << 3; x ^= x >> 2;
-    x += x << 4; x ^= x >> 9;
-    return x;
-}
-
-// No multiplication or rotation (-Imrn7)
-// bias = 0.027310607826676686
-uint16_t hash16_s7(uint16_t x)
-{
-    x ^= x >>  3; x -= x << 7;
-    x ^= x >>  2; x += x << 3;
-    x ^= x >>  5; x += x << 4;
-    x ^= x >> 10;
+    x += x << 4; x ^= x >> 8;
     return x;
 }
 
