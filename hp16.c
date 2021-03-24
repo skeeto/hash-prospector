@@ -137,7 +137,7 @@ hf_genfunc(struct hf_op *ops, int n, unsigned long long s[1])
     }
 }
 
-/* Indicate operation mixing direction (+1 left, 0 none, -1 right). */
+/* Indicate operation diffusion direction (+1 left, 0 none, -1 right). */
 static int
 opdir(struct hf_op op)
 {
@@ -158,7 +158,7 @@ opdir(struct hf_op op)
     abort();
 }
 
-/* Prefer to alternate bit mixing directions. */
+/* Prefer to alternate bit diffusion directions. */
 static void
 hf_gensmart(struct hf_op *ops, int n, unsigned long long s[1])
 {
@@ -183,6 +183,43 @@ hf_genxormul(struct hf_op *ops, int n, unsigned long long s[1])
         ops[2*i+1].imm = u32(s)>>16 | 1;
         ops[2*i+2].type = HF16_XORR;
         ops[2*i+2].imm = 1 + u32(s)%15;
+    }
+}
+
+/* An Add-Xor-Shift (AXS) hash alternates between diffusion leftward and
+ * rightward where one direction is always xorshift and the other direction is
+ * always add/sub-shift.
+ *
+ *   x ^= x >> A; x += x << B;
+ *   x ^= x >> C; x -= x << D;
+ *   x ^= x >> E; x += x << F;
+ *
+ * This function generates all permutations of this construction in order.
+ */
+#define AXS_COUNT 182250000
+#define AXS_SIZE  6
+static void
+hf_genaxs(struct hf_op *ops, long i)
+{
+    int shifts[] = {
+        1 + (i /      1) % 15,
+        1 + (i /     15) % 15,
+        1 + (i /    225) % 15,
+        1 + (i /   3375) % 15,
+        1 + (i /  50625) % 15,
+        1 + (i / 759375) % 15,
+    };
+    int types[] = {
+        (i / 11390625) % 2,
+        (i / 22781250) % 2,
+        (i / 45562500) % 2,
+    };
+    int swap = (i / 91125000) % 2;
+    for (int j = 0; j < 6; j += 2) {
+        ops[j+ swap].type = types[j/2] ? HF16_ADDL : HF16_SUBL;
+        ops[j+ swap].imm = shifts[j+0];
+        ops[j+!swap].type = HF16_XORR;
+        ops[j+!swap].imm = shifts[j+1];
     }
 }
 
@@ -378,6 +415,7 @@ static void
 usage(FILE *f)
 {
     fprintf(f, "hp16: [-HISX] [-hmr] [-n INT]\n");
+    fprintf(f, "  -A     mode: evaluate AXS hashes\n");
     fprintf(f, "  -H     mode: random hash prospector (default)\n");
     fprintf(f, "  -I     mode: smarter (?) hash prospector\n");
     fprintf(f, "  -S     mode: s-box prospector \n");
@@ -394,13 +432,18 @@ main(int argc, char **argv)
     char *ptr;
     int n = 0;
     int exclude = 0;
-    enum {MODE_HASH, MODE_SMART, MODE_XORMUL, MODE_SBOX} mode = MODE_HASH;
+    enum {
+        MODE_HASH, MODE_SMART, MODE_XORMUL, MODE_SBOX, MODE_AXS
+    } mode = MODE_HASH;
     unsigned long tmp;
     struct hf_op ops[1+2*OPS_MAX] = {{HF16_SBOX, 0}};
 
     int option;
-    while ((option = xgetopt(argc, argv, "HhImn:rSX")) != -1) {
+    while ((option = xgetopt(argc, argv, "AHhImn:rSX")) != -1) {
         switch (option) {
+        case 'A':
+            mode = MODE_AXS;
+            break;
         case 'H':
             mode = MODE_HASH;
             break;
@@ -442,10 +485,29 @@ main(int argc, char **argv)
     case MODE_SMART:  n = n ? n : 7; break;
     case MODE_XORMUL: n = n ? 1 + 2*n : 5; break;
     case MODE_SBOX:   sbox_init(); n = 1; break;
+    case MODE_AXS:    break;
     }
 
     double best = 1;
     unsigned long long s[1] = {hash64(time(0))};
+
+    if (mode == MODE_AXS) {
+        #pragma omp parallel for
+        for (long i = 0; i < AXS_COUNT; i++) {
+            struct hf_op hf[AXS_SIZE];
+            hf_genaxs(hf, i);
+            double r = score(hf, AXS_SIZE);
+            #pragma omp critical
+            if (r < best) {
+                best = r;
+                printf("// bias = %.17g\n", r);
+                hf_print(hf, AXS_SIZE, stdout);
+                fputc('\n', stdout);
+                fflush(stdout);
+            }
+        }
+        return 0;
+    }
 
     for (;;) {
         *s += hash64(time(0));
@@ -466,6 +528,8 @@ main(int argc, char **argv)
         case MODE_SBOX:
             sbox_shuffle(s);
             break;
+        case MODE_AXS:
+            abort();
         }
         *s -= hash64(clock());
 
@@ -486,6 +550,8 @@ main(int argc, char **argv)
                 fprintf(stderr, "// bias = %.17g\n", r);
                 fflush(stderr);
                 break;
+            case MODE_AXS:
+                abort();
             }
             fflush(stdout);
             best = r;
