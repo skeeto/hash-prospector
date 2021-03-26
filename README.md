@@ -2,8 +2,8 @@
 
 This is a little tool for automated [integer hash function][wang]
 discovery. It generates billions of [integer hash functions][jenkins] at
-random from a selection of [nine reversible operations][rev]. The
-generated functions are JIT compiled and their avalanche behavior is
+random from a selection of [nine reversible operations][rev] ([also][]).
+The generated functions are JIT compiled and their avalanche behavior is
 evaluated. The current best function is printed out in C syntax.
 
 The *avalanche score* is the number of output bits that remain "fixed"
@@ -367,6 +367,7 @@ certain cases. The C programs printed by this program are careful to
 promote 16-bit operations to "unsigned int" where needed.
 
 
+[also]: https://marc-b-reynolds.github.io/math/2017/10/13/IntegerBijections.html
 [article]: https://nullprogram.com/blog/2018/07/31/
 [jenkins]: http://burtleburtle.net/bob/hash/integer.html
 [rev]: http://papa.bretmulvey.com/post/124027987928/hash-functions
