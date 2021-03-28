@@ -336,10 +336,10 @@ uint16_t hash16_xm3(uint16_t x)
 }
 
 // No multiplication or rotation (-Imrn6)
-// bias = 0.025109145303048266
+// bias = 0.023840118344741465
 uint16_t hash16_s6(uint16_t x)
 {
-    x -= x << 7; x ^= x >> 8;
+    x += x << 7; x ^= x >> 8;
     x += x << 3; x ^= x >> 2;
     x += x << 4; x ^= x >> 8;
     return x;
