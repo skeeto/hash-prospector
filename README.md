@@ -302,8 +302,8 @@ prospector, this implementation is fully portable and will run on just
 about any system. It's also capable of generating and evaluating 128kiB
 s-boxes.
 
-Since 16-bit hashes are more likely to be needed on machines that lack
-multiplication or rotation instructions, these operations can be omitted
+Since 16-bit hashes are more likely to be needed on machines that, say,
+lack fast multiplication instructions, certain operations can be omitted
 during exploration (`-m`, `-r`).
 
 Some interesting results so far:
@@ -313,10 +313,8 @@ Some interesting results so far:
 // bias = 0.0086477226635588884
 uint16_t hash16_xm2(uint16_t x)
 {
-    x ^= x >> 8;
-    x *= 0xcf53U;
-    x ^= x >> 7;
-    x *= 0xf4cbU;
+    x ^= x >> 8; x *= 0xcf53U;
+    x ^= x >> 7; x *= 0xf4cbU;
     x ^= x >> 10;
     return x;
 }
@@ -325,17 +323,14 @@ uint16_t hash16_xm2(uint16_t x)
 // bias = 0.0047210974467451015
 uint16_t hash16_xm3(uint16_t x)
 {
-    x ^= x >> 7;
-    x *= 0xacddU;
-    x ^= x >> 3;
-    x *= 0xe69fU;
-    x ^= x >> 7;
-    x *= 0x84d3U;
+    x ^= x >> 7; x *= 0xacddU;
+    x ^= x >> 3; x *= 0xe69fU;
+    x ^= x >> 7; x *= 0x84d3U;
     x ^= x >> 7;
     return x;
 }
 
-// No multiplication or rotation (-Imrn6)
+// No multiplication (-Imn6)
 // bias = 0.023840118344741465
 uint16_t hash16_s6(uint16_t x)
 {
@@ -345,14 +340,12 @@ uint16_t hash16_s6(uint16_t x)
     return x;
 }
 
-// No multiplication or rotation (-Imrn8)
-// bias = 0.022256867459989432
-uint16_t hash16_s8(uint16_t x)
+// Which is identical to this xorshift-multiply
+uint16_t hash16_s6(uint16_t x)
 {
-    x += x <<  5; x ^= x >> 7;
-    x += x <<  5; x ^= x >> 3;
-    x += x <<  1; x ^= x >> 3;
-    x ^= x << 10; x ^= x >> 6;
+    x *= 0x0081U; x ^= x >> 8;
+    x *= 0x0009U; x ^= x >> 2;
+    x *= 0x0011U; x ^= x >> 8;
     return x;
 }
 ```
