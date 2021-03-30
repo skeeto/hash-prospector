@@ -173,16 +173,25 @@ hf_gensmart(struct hf_op *ops, int n, unsigned long long s[1])
     }
 }
 
+static int
+popcount(int v)
+{
+    // both GCC and Clang recognize this function as popcnt
+    int c = 0;
+    for (; v; c++) v &= v - 1;
+    return c;
+}
+
 static void
 hf_genxormul(struct hf_op *ops, int n, unsigned long long s[1])
 {
     ops[0].type = HF16_XORR;
-    ops[0].imm = 1 + u32(s)%15;
+    ops[0].imm = 1 + popcount(u32(s) >> 18);
     for (int i = 0; i < n; i++) {
         ops[2*i+1].type = HF16_MUL;
         ops[2*i+1].imm = u32(s)>>16 | 1;
         ops[2*i+2].type = HF16_XORR;
-        ops[2*i+2].imm = 1 + u32(s)%15;
+        ops[2*i+2].imm = 1 + popcount(u32(s) >> 18);
     }
 }
 
