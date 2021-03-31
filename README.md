@@ -318,12 +318,12 @@ Some interesting results so far:
 
 ```c
 // 2-round xorshift-multiply (-Xn2)
-// bias = 0.0086477226635588884
+// bias = 0.0085905051336723701
 uint16_t hash16_xm2(uint16_t x)
 {
-    x ^= x >> 8; x *= 0xcf53U;
-    x ^= x >> 7; x *= 0xf4cbU;
-    x ^= x >> 10;
+    x ^= x >> 8; x *= 0x88b5U;
+    x ^= x >> 7; x *= 0xdb2dU;
+    x ^= x >> 9;
     return x;
 }
 
