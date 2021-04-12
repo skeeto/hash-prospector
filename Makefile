@@ -8,6 +8,9 @@ compile: prospector genetic hillclimb hp16
 prospector: prospector.c
 	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ prospector.c $(LDLIBS)
 
+evalpow2: evalpow2.c
+	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ evalpow2.c $(LDLIBS)
+
 genetic: genetic.c
 	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ genetic.c $(LDLIBS)
 
@@ -36,8 +39,22 @@ check: prospector $(hashes)
 	./prospector -E -4 -l tests/murmurhash3_finalizer32.so
 	./prospector -E -8 -l tests/splitmix64.so
 
+tests/kensler.so: tests/kensler.c
+tests/kensler-splitmix64.so: tests/kensler-splitmix64.c
+tests/camel-cdr.so: tests/camel-cdr.c
+
+xhashes = \
+    tests/kensler.so \
+    tests/kensler-splitmix64.so \
+    tests/camel-cdr.so
+
+xcheck: evalpow2 $(xhashes)
+	./evalpow2 -v -n 32 -l tests/kensler.so && printf "\n"
+	./evalpow2 -v -n 64 -l tests/kensler-splitmix64.so && printf "\n"
+	./evalpow2 -v -n 64 -l tests/camel-cdr.so
+
 clean:
-	rm -f prospector genetic hillclimb hp16 $(hashes)
+	rm -f prospector evalpow2 genetic hillclimb hp16 $(hashes) $(xhashes)
 
 .SUFFIXES: .so .c
 .c.so:
