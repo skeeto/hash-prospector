@@ -3,7 +3,7 @@ CFLAGS  = -std=c99 -Wall -Wextra -march=native -O3 -ggdb3 -fopenmp
 LDFLAGS =
 LDLIBS  = -lm -ldl
 
-compile: prospector genetic hillclimb hp16
+compile: prospector evalpow2 genetic hillclimb hp16
 
 prospector: prospector.c
 	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ prospector.c $(LDLIBS)

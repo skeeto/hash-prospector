@@ -30,7 +30,7 @@ xoroshiro128plus(uint64_t s[2])
 #define F_TINY    (1 << 1)  // don't use big constants
 
 /* Higher quality is slower but has more consistent results. */
-static int score_quality = 14;
+static int score_quality = 18;
 static int nbits = 32;
 static int full_range = 0;
 
@@ -99,7 +99,7 @@ usage(FILE *f)
     fprintf(f, " -v          Print the bias for every power-of-two tested\n");
     fprintf(f, " -l ./lib.so Load hash() from a shared object\n");
     fprintf(f, " -p pattern  Search only a given pattern\n");
-    fprintf(f, " -q x        Score quality knob (12-30, default: 14)\n");
+    fprintf(f, " -q x        Score quality knob (12-30, default: 18)\n");
     fprintf(f, " -n n        Test all powers of two up to 2^n [32]\n");
 }
 
