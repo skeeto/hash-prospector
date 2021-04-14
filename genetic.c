@@ -76,29 +76,21 @@ estimate_bias32(const struct gene *g, uint64_t rng[4])
     return sqrt(mean) * 1000.0;
 }
 
-#define EXACT_SPLIT 32  // must be power of two
 static double
 exact_bias32(const struct gene *g)
 {
     long long bins[32][32] = {{0}};
-    static const uint64_t range = (UINT64_C(1) << 32) / EXACT_SPLIT;
-    #pragma omp parallel for
-    for (int i = 0; i < EXACT_SPLIT; i++) {
-        long long b[32][32] = {{0}};
-        for (uint64_t x = i * range; x < (i + 1) * range; x++) {
-            uint32_t h0 = hash(g, x);
-            for (int j = 0; j < 32; j++) {
-                uint32_t bit = UINT32_C(1) << j;
-                uint32_t h1 = hash(g, x ^ bit);
-                uint32_t set = h0 ^ h1;
-                for (int k = 0; k < 32; k++)
-                    b[j][k] += (set >> k) & 1;
-            }
-        }
-        #pragma omp critical
-        for (int j = 0; j < 32; j++)
+    static const uint64_t range = (UINT64_C(1) << 32);
+    #pragma omp parallel for reduction(+:bins[:32][:32])
+    for (uint64_t x = 0; x < range; x++) {
+        uint32_t h0 = hash(g, x);
+        for (int j = 0; j < 32; j++) {
+            uint32_t bit = UINT32_C(1) << j;
+            uint32_t h1 = hash(g, x ^ bit);
+            uint32_t set = h0 ^ h1;
             for (int k = 0; k < 32; k++)
-                bins[j][k] += b[j][k];
+                bins[j][k] += (set >> k) & 1;
+        }
     }
     double mean = 0.0;
     for (int j = 0; j < 32; j++) {
