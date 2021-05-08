@@ -12,6 +12,11 @@
 #include <sys/mman.h>
 #include <sys/time.h>
 
+#ifdef __SSSE3__
+#define HAVE_SHF        // we have SSSE3's byte SHuFfle
+#include <immintrin.h>
+#endif
+
 #define ABI __attribute__((sysv_abi))
 
 #define countof(a) ((int)(sizeof(a) / sizeof(0[a])))
@@ -36,6 +41,9 @@ enum hf_type {
     HF32_ROT,  // x  = (x << const5) | (x >> (32 - const5))
     HF32_NOT,  // x  = ~x
     HF32_BSWAP,// x  = bswap32(x)
+#ifdef HAVE_SHF
+    HF32_SHF,  // x  = __mm_shuffle_epi8(x, const32)
+#endif
     HF32_XORL, // x ^= x << const5
     HF32_XORR, // x ^= x >> const5
     HF32_ADDL, // x += x << const5
@@ -47,6 +55,9 @@ enum hf_type {
     HF64_ROT,
     HF64_NOT,
     HF64_BSWAP,
+#ifdef HAVE_SHF
+    HF64_SHF,
+#endif
     HF64_XORL,
     HF64_XORR,
     HF64_ADDL,
@@ -60,6 +71,9 @@ static const char hf_names[][8] = {
     [HF32_ROT]  = "32rot",
     [HF32_NOT]  = "32not",
     [HF32_BSWAP]= "32bswap",
+#ifdef HAVE_SHF
+    [HF32_SHF]  = "32shf",
+#endif
     [HF32_XORL] = "32xorl",
     [HF32_XORR] = "32xorr",
     [HF32_ADDL] = "32addl",
@@ -70,6 +84,9 @@ static const char hf_names[][8] = {
     [HF64_ROT]  = "64rot",
     [HF64_NOT]  = "64not",
     [HF64_BSWAP]= "64bswap",
+#ifdef HAVE_SHF
+    [HF64_SHF]  = "64shf",
+#endif
     [HF64_XORL] = "64xorl",
     [HF64_XORR] = "64xorr",
     [HF64_ADDL] = "64addl",
@@ -82,6 +99,9 @@ struct hf_op {
     uint64_t constant;
     int flags;
 };
+
+#define rol(n,x,r) (((x) << r) | ((x) >> (n - r)))
+#define ror(n,x,r) (((x) >> r) | ((x) << (n - r)))
 
 /* Randomize the constants of the given hash operation.
  */
@@ -96,6 +116,34 @@ hf_randomize(struct hf_op *op, uint64_t s[2])
         case HF64_BSWAP:
             op->constant = 0;
             break;
+#ifdef HAVE_SHF
+        case HF32_SHF: {
+            // 'inside-out' version of Fishes-Yates shuffle;
+            // taken from 'https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle'
+            // and considered in the public domain;
+            // using byte positions in uint32_t or uint64_t, respectively
+            uint32_t c = 0;
+            for(int i = 0; i < (int)sizeof(c); i++) {
+                c <<= 8;
+                r = (uint32_t)xoroshiro128plus(s) % (i + 1);
+                if(r) c |= (uint8_t)(c >> (r * 8));                                            // a[i] = a[r]
+                c = ror(32, c, (r * 8)); c &= ~(uint32_t)0xff; c |= i; c = rol(32, c, r * 8);  // a[r] = i
+            }
+            op->constant = c;
+            break;
+        }
+        case HF64_SHF: {
+            uint64_t c = 0;
+            for(int i = 0; i < (int)sizeof(c); i++) {
+                c <<= 8;
+                r = (uint32_t)xoroshiro128plus(s) % (i + 1);
+                if(r) c |= (uint8_t)(c >> (r * 8));                                     // a[i] = a[r]
+                c = ror(64, c, (r * 8)); c &= ~0xffull; c |= i; c = rol(64, c, r * 8);  // a[r] = i
+            }
+            op->constant = c;
+            break;
+        }
+#endif
         case HF32_XOR:
         case HF32_ADD:
             op->constant = (uint32_t)r;
@@ -147,12 +195,18 @@ hf_type_valid(enum hf_type a, enum hf_type b)
     switch (a) {
         case HF32_NOT:
         case HF32_BSWAP:
+#ifdef HAVE_SHF
+        case HF32_SHF:
+#endif
         case HF32_XOR:
         case HF32_MUL:
         case HF32_ADD:
         case HF32_ROT:
         case HF64_NOT:
         case HF64_BSWAP:
+#ifdef HAVE_SHF
+        case HF64_SHF:
+#endif
         case HF64_XOR:
         case HF64_MUL:
         case HF64_ADD:
@@ -207,6 +261,11 @@ hf_print(const struct hf_op *op, char *buf)
         case HF64_BSWAP:
             sprintf(buf, "x  = __builtin_bswap64(x);");
             break;
+#ifdef HAVE_SHF
+        case HF32_SHF:
+            sprintf(buf, "x = _mm_shuffle_epi8(x, __mm_cvtsi32_si128(0x%08llx));", c);
+            break;
+#endif
         case HF32_XOR:
             sprintf(buf, "x ^= 0x%08llx;", c);
             break;
@@ -231,6 +290,11 @@ hf_print(const struct hf_op *op, char *buf)
         case HF32_SUBL:
             sprintf(buf, "x -= x << %llu;", c);
             break;
+#ifdef HAVE_SHF
+        case HF64_SHF:
+            sprintf(buf, "x = _mm_shuffle_epi8(x, __mm_cvtsi64_si128(0x%016llx));", c);
+            break;
+#endif
         case HF64_XOR:
             sprintf(buf, "x ^= 0x%016llx;", c);
             break;
@@ -266,7 +330,7 @@ hf_printfunc(const struct hf_op *ops, int n, FILE *f)
     else
         fprintf(f, "uint64_t\nhash(uint64_t x)\n{\n");
     for (int i = 0; i < n; i++) {
-        char buf[64];
+        char buf[80];
         hf_print(ops + i, buf);
         fprintf(f, "    %s\n", buf);
     }
@@ -299,6 +363,37 @@ hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
                 *buf++ = 0x0f;
                 *buf++ = 0xc8;
                 break;
+#ifdef HAVE_SHF
+            case HF32_SHF:
+                /* mov edi, imm32 */
+                *buf++ = 0xbf;
+                *buf++ = ops[i].constant >>  0;
+                *buf++ = ops[i].constant >>  8;
+                *buf++ = ops[i].constant >> 16;
+                *buf++ = ops[i].constant >> 24;
+                /* movd xmm0, eax */
+                *buf++ = 0x66;
+                *buf++ = 0x0f;
+                *buf++ = 0x6e;
+                *buf++ = 0xc0;
+                /* movd xmm1, edi */
+                *buf++ = 0x66;
+                *buf++ = 0x0f;
+                *buf++ = 0x6e;
+                *buf++ = 0xcf;
+                /* pshufb xmm0, xmm1 */
+                *buf++ = 0x66;
+                *buf++ = 0x0f;
+                *buf++ = 0x38;
+                *buf++ = 0x00;
+                *buf++ = 0xc1;
+                /* movd eax, xmm0 */
+                *buf++ = 0x66;
+                *buf++ = 0x0f;
+                *buf++ = 0x7e;
+                *buf++ = 0xc0;
+                break;
+#endif
             case HF32_XOR:
                 /* xor eax, imm32 */
                 *buf++ = 0x35;
@@ -390,6 +485,45 @@ hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
                 *buf++ = 0x0f;
                 *buf++ = 0xc8;
                 break;
+#ifdef HAVE_SHF
+            case HF64_SHF:
+                /* mov rdi, imm64 */
+                *buf++ = 0x48;
+                *buf++ = 0xbf;
+                *buf++ = ops[i].constant >>  0;
+                *buf++ = ops[i].constant >>  8;
+                *buf++ = ops[i].constant >> 16;
+                *buf++ = ops[i].constant >> 24;
+                *buf++ = ops[i].constant >> 32;
+                *buf++ = ops[i].constant >> 40;
+                *buf++ = ops[i].constant >> 48;
+                *buf++ = ops[i].constant >> 56;
+                /* movq xmm0, rax */
+                *buf++ = 0x66;
+                *buf++ = 0x48;
+                *buf++ = 0x0f;
+                *buf++ = 0x6e;
+                *buf++ = 0xc0;
+                /* movq xmm1, rdi */
+                *buf++ = 0x66;
+                *buf++ = 0x48;
+                *buf++ = 0x0f;
+                *buf++ = 0x6e;
+                *buf++ = 0xcf;
+                /* pshufb xmm0, xmm1 */
+                *buf++ = 0x66;
+                *buf++ = 0x0f;
+                *buf++ = 0x38;
+                *buf++ = 0x00;
+                *buf++ = 0xc1;
+                /* movq rax, xmm0 */
+                *buf++ = 0x66;
+                *buf++ = 0x48;
+                *buf++ = 0x0f;
+                *buf++ = 0x7e;
+                *buf++ = 0xc0;
+                break;
+#endif
             case HF64_XOR:
                 /* mov rdi, imm64 */
                 *buf++ = 0x48;
@@ -687,6 +821,28 @@ usage(FILE *f)
 }
 
 static int
+is_perm32(uint32_t vector)
+{
+    int mask = 0;
+    for(int i = 0; i < (int)sizeof(vector); i++) {
+        mask |= (1 << (uint8_t)vector);
+        vector >>= 8;
+    }
+    return (mask == ((1 << sizeof(vector)) - 1) /* 15 */);
+}
+
+static int
+is_perm64(uint64_t vector)
+{
+    int mask = 0;
+    for(int i = 0; i < (int)sizeof(vector); i++) {
+        mask |= (1 << (uint8_t)vector);
+        vector >>= 8;
+    }
+    return (mask == ((1 << sizeof(vector)) - 1) /* 255 */);
+}
+
+static int
 parse_operand(struct hf_op *op, char *buf)
 {
     op->flags |= FOP_LOCKED;
@@ -704,6 +860,14 @@ parse_operand(struct hf_op *op, char *buf)
         case HF64_ADD:
             op->constant = strtoull(buf, 0, 16);
             return 1;
+#ifdef HAVE_SHF
+        case HF32_SHF:
+            op->constant = strtoull(buf, 0, 16);
+            return is_perm32(op->constant);
+        case HF64_SHF:
+            op->constant = strtoull(buf, 0, 16);
+            return is_perm64(op->constant);
+#endif
         case HF32_ROT:
         case HF32_XORL:
         case HF32_XORR:
