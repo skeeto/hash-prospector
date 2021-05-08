@@ -303,11 +303,11 @@ uniquely special and particularly useful. The generator is very unlikely
 to generate the one correct constant for the XOR operator that achieves
 the same effect.
 
-`shf` uses the SSSE3 byte shuffle instruction and only is available on
-corresponding hardware; `03020100` denotes identity (no permute), `00010203`
-equals the endianess changing byte swap. 64-bit hashes optioanlly take a
-permutation of `{ 00, ...  , 07 }` such as `0304050607020100`; all hex 
-without leading `0x`.
+`shf` pattern uses the SSSE3 byte shuffle instruction and only is available 
+on corresponding hardware; `shf:03020100` denotes identity (no change),
+`shf:00010203` equals the endianess changing byte swap. 64-bit hashes
+optionally take a permutation of `{ 00, ...  , 07 }` such as
+`shf:0304050607020100`.
 
 ## 16-bit hashes
 
