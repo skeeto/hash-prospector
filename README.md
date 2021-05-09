@@ -2,7 +2,7 @@
 
 This is a little tool for automated [integer hash function][wang]
 discovery. It generates billions of [integer hash functions][jenkins] at
-random from a selection of [nine reversible operations][rev] ([also][]).
+random from a selection of eleven [reversible operations][rev] ([also][]).
 The generated functions are JIT compiled and their avalanche behavior is
 evaluated. The current best function is printed out in C syntax.
 
