@@ -2,7 +2,7 @@
 
 This is a little tool for automated [integer hash function][wang]
 discovery. It generates billions of [integer hash functions][jenkins] at
-random from a selection of [nine reversible operations][rev] ([also][]).
+random from a selection of 13 [reversible operations][rev] ([also][]).
 The generated functions are JIT compiled and their avalanche behavior is
 evaluated. The current best function is printed out in C syntax.
 
@@ -288,19 +288,32 @@ long.
 ```c
 x  = ~x;
 x ^= constant;
-x *= constant | 1; // e.g. only odd constants
+x *= constant | 1;                           // e.g. only odd constants
 x += constant;
 x ^= x >> constant;
 x ^= x << constant;
 x += x << constant;
 x -= x << constant;
-x <<<= constant; // left rotation
+x <<<= constant;                             // left rotation
+x ^= (x <<< constantA) ^ (x <<< constantB);  // xor-rotate
+bswap(x);                                    // byte swap - the endianess changer
+shf(x, constant);                            // byte shuffle, permutation
+clmul(x, constant | 1);                      // carryless multiplication, odd constants
 ```
 
 Technically `x = ~x` is covered by `x = ^= constant`. However, `~x` is
 uniquely special and particularly useful. The generator is very unlikely
 to generate the one correct constant for the XOR operator that achieves
 the same effect.
+
+`shf` pattern uses the SSSE3 byte shuffle instruction and is available 
+on corresponding hardware only; `shf:03020100` denotes identity (no change),
+`shf:00010203` equals the endianess changing byte swap. 64-bit hashes
+optionally take a permutation of `{ 00, ...  , 07 }` such as
+`shf:0304050607020100`.
+
+`clmul`, the carryless multiplication instruction, is also available on supported
+hardware only.
 
 ## 16-bit hashes
 
