@@ -191,7 +191,7 @@ hf_randomize(struct hf_op *op, uint64_t s[2])
             op->constant1 = 1 + (r >> 10) % 31;
             if (op->constant1 == op->constant0) {
                 // do not allow both constants to be equal
-                op->constant 1 + ((r >> 10) + 1) % 31;
+                op->constant1 = 1 + ((r >> 10) + 1) % 31;
             }
             break;
         case HF64_XOR:
@@ -214,6 +214,10 @@ hf_randomize(struct hf_op *op, uint64_t s[2])
         case HF64_XROT2:
             op->constant0 = 1 + r % 63;
             op->constant1 = 1 + (r >> 12) % 63;
+            if (op->constant1 == op->constant0) {
+                // do not allow both constants to be equal
+                op->constant1 = 1 + ((r >> 12) + 1) % 63;
+            }
             break;
     }
 }
