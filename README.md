@@ -2,7 +2,7 @@
 
 This is a little tool for automated [integer hash function][wang]
 discovery. It generates billions of [integer hash functions][jenkins] at
-random from a selection of eleven [reversible operations][rev] ([also][]).
+random from a selection of 13 [reversible operations][rev] ([also][]).
 The generated functions are JIT compiled and their avalanche behavior is
 evaluated. The current best function is printed out in C syntax.
 
@@ -287,16 +287,17 @@ long.
 ```c
 x  = ~x;
 x ^= constant;
-x *= constant | 1;      // e.g. only odd constants
+x *= constant | 1;                           // e.g. only odd constants
 x += constant;
 x ^= x >> constant;
 x ^= x << constant;
 x += x << constant;
 x -= x << constant;
-x <<<= constant;        // left rotation
-bswap(x);               // byte swap - the endianess changer
-shf(x, constant);       // byte shuffle, permutation
-clmul(x, constant | 1); // carryless multiplication, odd constants
+x <<<= constant;                             // left rotation
+x ^= (x <<< constantA) ^ (x <<< constantB);  // xor-rotate
+bswap(x);                                    // byte swap - the endianess changer
+shf(x, constant);                            // byte shuffle, permutation
+clmul(x, constant | 1);                      // carryless multiplication, odd constants
 ```
 
 Technically `x = ~x` is covered by `x = ^= constant`. However, `~x` is
