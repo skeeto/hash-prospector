@@ -12,10 +12,18 @@
 #include <sys/mman.h>
 #include <sys/time.h>
 
-#ifdef __SSSE3__
-#define HAVE_SHF        // we have SSSE3's byte SHuFfle
+#if defined (__SSSE3__) || defined (__PCLMUL__)
 #include <immintrin.h>
+ #ifdef __SSSE3__
+ #define HAVE_SHF        // we have SSSE3's byte SHuFfle
+ #endif
+ #ifdef __PCLMUL__
+ #define HAVE_CLMUL      // we have CarryLess MULtiplication
+ #endif
 #endif
+
+
+
 
 #define ABI __attribute__((sysv_abi))
 
@@ -36,13 +44,16 @@ xoroshiro128plus(uint64_t s[2])
 enum hf_type {
     /* 32 bits */
     HF32_XOR,  // x ^= const32
+#ifdef HAVE_CLMUL
+    HF32_CLMUL,// x  = _mm_clmulepi64_si128(x, const32, opSelect)
+#endif
     HF32_MUL,  // x *= const32 (odd)
     HF32_ADD,  // x += const32
     HF32_ROT,  // x  = (x << const5) | (x >> (32 - const5))
     HF32_NOT,  // x  = ~x
     HF32_BSWAP,// x  = bswap32(x)
 #ifdef HAVE_SHF
-    HF32_SHF,  // x  = __mm_shuffle_epi8(x, const32)
+    HF32_SHF,  // x  = _mm_shuffle_epi8(x, const32)
 #endif
     HF32_XORL, // x ^= x << const5
     HF32_XORR, // x ^= x >> const5
@@ -50,6 +61,9 @@ enum hf_type {
     HF32_SUBL, // x -= x << const5
     /* 64 bits */
     HF64_XOR,
+#ifdef HAVE_CLMUL
+    HF64_CLMUL,
+#endif
     HF64_MUL,
     HF64_ADD,
     HF64_ROT,
@@ -66,6 +80,9 @@ enum hf_type {
 
 static const char hf_names[][8] = {
     [HF32_XOR]  = "32xor",
+#ifdef HAVE_CLMUL
+    [HF32_CLMUL]= "32clmul",
+#endif
     [HF32_MUL]  = "32mul",
     [HF32_ADD]  = "32add",
     [HF32_ROT]  = "32rot",
@@ -79,6 +96,9 @@ static const char hf_names[][8] = {
     [HF32_ADDL] = "32addl",
     [HF32_SUBL] = "32subl",
     [HF64_XOR]  = "64xor",
+#ifdef HAVE_CLMUL
+    [HF64_CLMUL]= "64clmul",
+#endif
     [HF64_MUL]  = "64mul",
     [HF64_ADD]  = "64add",
     [HF64_ROT]  = "64rot",
@@ -148,6 +168,9 @@ hf_randomize(struct hf_op *op, uint64_t s[2])
         case HF32_ADD:
             op->constant = (uint32_t)r;
             break;
+#ifdef HAVE_CLMUL
+        case HF32_CLMUL:
+#endif
         case HF32_MUL:
             op->constant = (uint32_t)r | 1;
             break;
@@ -162,6 +185,9 @@ hf_randomize(struct hf_op *op, uint64_t s[2])
         case HF64_ADD:
             op->constant = r;
             break;
+#ifdef HAVE_CLMUL
+        case HF64_CLMUL:
+#endif
         case HF64_MUL:
             op->constant = r | 1;
             break;
@@ -199,6 +225,9 @@ hf_type_valid(enum hf_type a, enum hf_type b)
         case HF32_SHF:
 #endif
         case HF32_XOR:
+#ifdef HAVE_CLMUL
+        case HF32_CLMUL:
+#endif
         case HF32_MUL:
         case HF32_ADD:
         case HF32_ROT:
@@ -208,6 +237,9 @@ hf_type_valid(enum hf_type a, enum hf_type b)
         case HF64_SHF:
 #endif
         case HF64_XOR:
+#ifdef HAVE_CLMUL
+        case HF64_CLMUL:
+#endif
         case HF64_MUL:
         case HF64_ADD:
         case HF64_ROT:
@@ -263,12 +295,17 @@ hf_print(const struct hf_op *op, char *buf)
             break;
 #ifdef HAVE_SHF
         case HF32_SHF:
-            sprintf(buf, "x = _mm_shuffle_epi8(x, __mm_cvtsi32_si128(0x%08llx));", c);
+            sprintf(buf, "x = _mm_cvtsi128_si32(_mm_shuffle_epi8(x, _mm_cvtsi32_si128(0x%08llx));", c);
             break;
 #endif
         case HF32_XOR:
             sprintf(buf, "x ^= 0x%08llx;", c);
             break;
+#ifdef HAVE_CLMUL
+        case HF32_CLMUL:
+            sprintf(buf, "x = _mm_cvtsi128_si32(_mm_clmulepi64_si128(_mm_cvtsi32_si128(x), _mm_cvtsi32_si128(0x%08llx), 0x00));", c);
+            break;
+#endif
         case HF32_MUL:
             sprintf(buf, "x *= 0x%08llx;", c);
             break;
@@ -298,6 +335,11 @@ hf_print(const struct hf_op *op, char *buf)
         case HF64_XOR:
             sprintf(buf, "x ^= 0x%016llx;", c);
             break;
+#ifdef HAVE_CLMUL
+        case HF64_CLMUL:
+            sprintf(buf, "x = _mm_cvtsi128_si64(_mm_clmulepi64_si128(_mm_cvtsi64_si128(x), _mm_cvtsi64_si128(0x%016llx), 0x00));", c);
+            break;
+#endif
         case HF64_MUL:
             sprintf(buf, "x *= 0x%016llx;", c);
             break;
@@ -330,7 +372,7 @@ hf_printfunc(const struct hf_op *ops, int n, FILE *f)
     else
         fprintf(f, "uint64_t\nhash(uint64_t x)\n{\n");
     for (int i = 0; i < n; i++) {
-        char buf[80];
+        char buf[120];
         hf_print(ops + i, buf);
         fprintf(f, "    %s\n", buf);
     }
@@ -402,6 +444,38 @@ hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
                 *buf++ = ops[i].constant >> 16;
                 *buf++ = ops[i].constant >> 24;
                 break;
+#ifdef HAVE_CLMUL
+            case HF32_CLMUL:
+                /* movd xmm0, eax */
+                *buf++ = 0x66;
+                *buf++ = 0x0f;
+                *buf++ = 0x6e;
+                *buf++ = 0xc0;
+                /* mov edi, imm32 */
+                *buf++ = 0xbf;
+                *buf++ = ops[i].constant >>  0;
+                *buf++ = ops[i].constant >>  8;
+                *buf++ = ops[i].constant >> 16;
+                *buf++ = ops[i].constant >> 24;
+                /* movd xmm1, edi */
+                *buf++ = 0x66;
+                *buf++ = 0x0f;
+                *buf++ = 0x6e;
+                *buf++ = 0xcf;
+                /* pclmulqdq xmm0, xmm1, 0 */
+                *buf++ = 0x66;
+                *buf++ = 0x0f;
+                *buf++ = 0x3a;
+                *buf++ = 0x44;
+                *buf++ = 0xc1;
+                *buf++ = 0x00;
+                /* movd eax, xmm0 */
+                *buf++ = 0x66;
+                *buf++ = 0x0f;
+                *buf++ = 0x7e;
+                *buf++ = 0xc0;
+                break;
+#endif
             case HF32_MUL:
                 /* imul eax, eax, imm32 */
                 *buf++ = 0x69;
@@ -541,6 +615,46 @@ hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
                 *buf++ = 0x31;
                 *buf++ = 0xf8;
                 break;
+#ifdef HAVE_CLMUL
+            case HF64_CLMUL:
+                /* movq xmm0, rax */
+                *buf++ = 0x66;
+                *buf++ = 0x48;
+                *buf++ = 0x0f;
+                *buf++ = 0x6e;
+                *buf++ = 0xc0;
+                /* mov rdi, imm64 */
+                *buf++ = 0x48;
+                *buf++ = 0xbf;
+                *buf++ = ops[i].constant >>  0;
+                *buf++ = ops[i].constant >>  8;
+                *buf++ = ops[i].constant >> 16;
+                *buf++ = ops[i].constant >> 24;
+                *buf++ = ops[i].constant >> 32;
+                *buf++ = ops[i].constant >> 40;
+                *buf++ = ops[i].constant >> 48;
+                *buf++ = ops[i].constant >> 56;
+                /* movq xmm1, rdi */
+                *buf++ = 0x66;
+                *buf++ = 0x48;
+                *buf++ = 0x0f;
+                *buf++ = 0x6e;
+                *buf++ = 0xcf;
+                /* pclmulqdq xmm0, xmm1, 0x00 */
+                *buf++ = 0x66;
+                *buf++ = 0x0f;
+                *buf++ = 0x3a;
+                *buf++ = 0x44;
+                *buf++ = 0xc1;
+                *buf++ = 0x00;
+                /* movd rax, xmm0 */
+                *buf++ = 0x66;
+                *buf++ = 0x48;
+                *buf++ = 0x0f;
+                *buf++ = 0x7e;
+                *buf++ = 0xc0;
+                break;
+#endif
             case HF64_MUL:
                 /* mov rdi, imm64 */
                 *buf++ = 0x48;
@@ -853,9 +967,15 @@ parse_operand(struct hf_op *op, char *buf)
         case HF64_BSWAP:
             return 0;
         case HF32_XOR:
+#ifdef HAVE_CLMUL
+        case HF32_CLMUL:
+#endif
         case HF32_MUL:
         case HF32_ADD:
         case HF64_XOR:
+#ifdef HAVE_CLMUL
+        case HF64_CLMUL:
+#endif
         case HF64_MUL:
         case HF64_ADD:
             op->constant = strtoull(buf, 0, 16);
