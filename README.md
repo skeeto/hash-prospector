@@ -287,15 +287,16 @@ long.
 ```c
 x  = ~x;
 x ^= constant;
-x *= constant | 1; // e.g. only odd constants
+x *= constant | 1;      // e.g. only odd constants
 x += constant;
 x ^= x >> constant;
 x ^= x << constant;
 x += x << constant;
 x -= x << constant;
-x <<<= constant;  // left rotation
-bswap(x);         // byte swap - the endianess changer 
-shf(x, constant); // byte shuffle, permutation
+x <<<= constant;        // left rotation
+bswap(x);               // byte swap - the endianess changer
+shf(x, constant);       // byte shuffle, permutation
+clmul(x, constant | 1); // carryless multiplication, odd constants
 ```
 
 Technically `x = ~x` is covered by `x = ^= constant`. However, `~x` is
@@ -303,11 +304,14 @@ uniquely special and particularly useful. The generator is very unlikely
 to generate the one correct constant for the XOR operator that achieves
 the same effect.
 
-`shf` pattern uses the SSSE3 byte shuffle instruction and only is available 
-on corresponding hardware; `shf:03020100` denotes identity (no change),
+`shf` pattern uses the SSSE3 byte shuffle instruction and is available 
+on corresponding hardware only; `shf:03020100` denotes identity (no change),
 `shf:00010203` equals the endianess changing byte swap. 64-bit hashes
 optionally take a permutation of `{ 00, ...  , 07 }` such as
 `shf:0304050607020100`.
+
+`clmul`, the carryless multiplication instruction, is also available on supported
+hardware only.
 
 ## 16-bit hashes
 
