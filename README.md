@@ -27,11 +27,10 @@ of rounds.
 
 ### Two round functions
 
-This 32-bit integer hash function has the lowest bias of any in this
-form ever devised. It even beats the venerable MurmurHash3 32-bit
-finalizer by a tiny margin. The hash function construction was
-discovered by the prospector, then the parameters were tuned using hill
-climbing and a genetic algorithm.
+This 32-bit, two-round permutation has a particularly low bias and even
+beats the venerable MurmurHash3 32-bit finalizer by a tiny margin. The
+hash function construction was discovered by the prospector, then the
+parameters were tuned using hill climbing and a genetic algorithm.
 
 ```c
 // exact bias: 0.17353355999581582
@@ -59,7 +58,7 @@ lowbias32_r(uint32_t x)
 }
 ```
 
-More 2-round constants with low bias:
+More 2-round constants with low bias, some even better than `lowbias32`:
 
     [15 d168aaad 15 af723597 15] = 0.15983776156606694
     [17 9e485565 16 ef1d6b47 16] = 0.16143129787074881
