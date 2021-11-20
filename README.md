@@ -297,6 +297,7 @@ x <<<= constant;                             // left rotation
 x ^= (x <<< constantA) ^ (x <<< constantB);  // xor-rotate
 bswap(x);                                    // byte swap - the endianess changer
 shf(x, constant);                            // byte shuffle, permutation
+crc32(x, constant);                          // crc32c step, 32-bit only
 clmul(x, constant | 1);                      // carryless multiplication, odd constants
 ```
 
@@ -310,6 +311,9 @@ on corresponding hardware only; `shf:03020100` denotes identity (no change),
 `shf:00010203` equals the endianess changing byte swap. 64-bit hashes
 optionally take a permutation of `{ 00, ...  , 07 }` such as
 `shf:0304050607020100`.
+
+`crc` performs a hardware-accelerated CRC32c step – requiring a SSE4.2-
+capable CPU. It is defined for 32-bit hashes only, try `-4 -p crc32,mul,crc32`.
 
 `clmul`, the carryless multiplication instruction, is also available on supported
 hardware only.
