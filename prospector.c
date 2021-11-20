@@ -25,9 +25,6 @@
  #endif
 #endif
 
-
-
-
 #define ABI __attribute__((sysv_abi))
 
 #define countof(a) ((int)(sizeof(a) / sizeof(0[a])))
@@ -508,7 +505,7 @@ hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
                 *buf++ = 0x38;
                 *buf++ = 0xf1;
                 *buf++ = 0xc7;
-            break;
+                break;
 #endif
 #ifdef HAVE_CLMUL
             case HF32_CLMUL:
