@@ -20,6 +20,9 @@
  #ifdef __PCLMUL__
  #define HAVE_CLMUL      // we have CarryLess MULtiplication
  #endif
+ #ifdef __SSE4_2__
+ #define HAVE_CRC32C     // we have CRC32
+ #endif
 #endif
 
 
@@ -46,6 +49,9 @@ enum hf_type {
     HF32_XOR,  // x ^= const32
 #ifdef HAVE_CLMUL
     HF32_CLMUL,// x  = _mm_clmulepi64_si128(x, const32, opSelect)
+#endif
+#ifdef HAVE_CRC32C
+    HF32_CRC32C,
 #endif
     HF32_MUL,  // x *= const32 (odd)
     HF32_ADD,  // x += const32
@@ -82,6 +88,9 @@ enum hf_type {
 
 static const char hf_names[][8] = {
     [HF32_XOR]  = "32xor",
+#ifdef HAVE_CRC32C
+    [HF32_CRC32C]= "32crc32",
+#endif
 #ifdef HAVE_CLMUL
     [HF32_CLMUL]= "32clmul",
 #endif
@@ -171,6 +180,9 @@ hf_randomize(struct hf_op *op, uint64_t s[2])
 #endif
         case HF32_XOR:
         case HF32_ADD:
+#ifdef HAVE_CRC32C
+        case HF32_CRC32C:
+#endif
             op->constant0 = (uint32_t)r;
             break;
 #ifdef HAVE_CLMUL
@@ -246,6 +258,9 @@ hf_type_valid(enum hf_type a, enum hf_type b)
         case HF32_SHF:
 #endif
         case HF32_XOR:
+#ifdef HAVE_CRC32C
+        case HF32_CRC32C:
+#endif
 #ifdef HAVE_CLMUL
         case HF32_CLMUL:
 #endif
@@ -325,6 +340,11 @@ hf_print(const struct hf_op *op, char *buf)
         case HF32_XOR:
             sprintf(buf, "x ^= 0x%08llx;", c);
             break;
+#ifdef HAVE_CRC32C
+        case HF32_CRC32C:
+            sprintf(buf, "x = _mm_crc32_u32(x, 0x%08llx);", c);
+            break;
+#endif
 #ifdef HAVE_CLMUL
         case HF32_CLMUL:
             sprintf(buf, "x = _mm_cvtsi128_si32(_mm_clmulepi64_si128(_mm_cvtsi32_si128(x), _mm_cvtsi32_si128(0x%08llx), 0x00));", c);
@@ -474,6 +494,22 @@ hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
                 *buf++ = ops[i].constant0 >> 16;
                 *buf++ = ops[i].constant0 >> 24;
                 break;
+#ifdef HAVE_CRC32C
+        case HF32_CRC32C:
+                /* mov edi, imm32 */
+                *buf++ = 0xbf;
+                *buf++ = ops[i].constant0 >>  0;
+                *buf++ = ops[i].constant0 >>  8;
+                *buf++ = ops[i].constant0 >> 16;
+                *buf++ = ops[i].constant0 >> 24;
+                /* crc32 eax, edi */
+                *buf++ = 0xf2;
+                *buf++ = 0x0f;
+                *buf++ = 0x38;
+                *buf++ = 0xf1;
+                *buf++ = 0xc7;
+            break;
+#endif
 #ifdef HAVE_CLMUL
             case HF32_CLMUL:
                 /* movd xmm0, eax */
@@ -1044,6 +1080,9 @@ parse_operand(struct hf_op *op, char *buf)
         case HF64_BSWAP:
             return 0;
         case HF32_XOR:
+#ifdef HAVE_CRC32C
+        case HF32_CRC32C:
+#endif
 #ifdef HAVE_CLMUL
         case HF32_CLMUL:
 #endif
