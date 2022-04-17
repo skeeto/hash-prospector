@@ -27,6 +27,13 @@ of rounds.
 
 ### Two round functions
 
+**Update**: [TheIronBorn has used combinatorial optimization][best] to
+discover the best known parameters for this construction:
+
+    [16 21f0aaad 15 d35a2d97 15] = 0.10760229515479501
+
+* * *
+
 This 32-bit, two-round permutation has a particularly low bias and even
 beats the venerable MurmurHash3 32-bit finalizer by a tiny margin. The
 hash function construction was discovered by the prospector, then the
@@ -369,6 +376,7 @@ promote 16-bit operations to "unsigned int" where needed.
 
 [also]: https://marc-b-reynolds.github.io/math/2017/10/13/IntegerBijections.html
 [article]: https://nullprogram.com/blog/2018/07/31/
+[best]: https://github.com/skeeto/hash-prospector/issues/19
 [jenkins]: http://burtleburtle.net/bob/hash/integer.html
 [rev]: http://papa.bretmulvey.com/post/124027987928/hash-functions
 [wang]: https://gist.github.com/badboy/6267743
