@@ -313,7 +313,7 @@ the same effect.
 Because the constraints are different for 16-bit hashes there's a separate
 tool for generating these hashes: `hp16`. Unlike the 32-bit / 64-bit
 prospector, this implementation is fully portable and will run on just
-about any system. It's also capable of generating and evaluating 128kiB
+about any system. It's also capable of generating and evaluating 128KiB
 s-boxes.
 
 Since 16-bit hashes are more likely to be needed on machines that, say,
