@@ -303,7 +303,7 @@ x -= x << constant;
 x <<<= constant; // left rotation
 ```
 
-Technically `x = ~x` is covered by `x = ^= constant`. However, `~x` is
+Technically `x = ~x` is covered by `x ^= constant`. However, `~x` is
 uniquely special and particularly useful. The generator is very unlikely
 to generate the one correct constant for the XOR operator that achieves
 the same effect.
