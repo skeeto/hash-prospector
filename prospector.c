@@ -12,6 +12,19 @@
 #include <sys/mman.h>
 #include <sys/time.h>
 
+#if defined (__SSSE3__) || defined (__PCLMUL__)
+#include <immintrin.h>
+ #ifdef __SSSE3__
+ #define HAVE_SHF        // we have SSSE3's byte SHuFfle
+ #endif
+ #ifdef __PCLMUL__
+ #define HAVE_CLMUL      // we have CarryLess MULtiplication
+ #endif
+ #ifdef __SSE4_2__
+ #define HAVE_CRC32C     // we have CRC32
+ #endif
+#endif
+
 #define ABI __attribute__((sysv_abi))
 
 #define countof(a) ((int)(sizeof(a) / sizeof(0[a])))
@@ -31,57 +44,95 @@ xoroshiro128plus(uint64_t s[2])
 enum hf_type {
     /* 32 bits */
     HF32_XOR,  // x ^= const32
+#ifdef HAVE_CLMUL
+    HF32_CLMUL,// x  = _mm_clmulepi64_si128(x, const32, opSelect)
+#endif
+#ifdef HAVE_CRC32C
+    HF32_CRC32C,
+#endif
     HF32_MUL,  // x *= const32 (odd)
     HF32_ADD,  // x += const32
-    HF32_ROT,  // x  = (x << const5) | (x >> (32 - const5))
+    HF32_ROT,  // x  = (x << const5) | (x >> (32 - const5)) a.k.a. (x <<< const5)
     HF32_NOT,  // x  = ~x
     HF32_BSWAP,// x  = bswap32(x)
+#ifdef HAVE_SHF
+    HF32_SHF,  // x  = _mm_shuffle_epi8(x, const32)
+#endif
     HF32_XORL, // x ^= x << const5
     HF32_XORR, // x ^= x >> const5
     HF32_ADDL, // x += x << const5
     HF32_SUBL, // x -= x << const5
+    HF32_XROT2,// x ^= (x <<< aConst5) ^ (x <<< bConst5)
     /* 64 bits */
     HF64_XOR,
+#ifdef HAVE_CLMUL
+    HF64_CLMUL,
+#endif
     HF64_MUL,
     HF64_ADD,
     HF64_ROT,
     HF64_NOT,
     HF64_BSWAP,
+#ifdef HAVE_SHF
+    HF64_SHF,
+#endif
     HF64_XORL,
     HF64_XORR,
     HF64_ADDL,
     HF64_SUBL,
+    HF64_XROT2
 };
 
 static const char hf_names[][8] = {
     [HF32_XOR]  = "32xor",
+#ifdef HAVE_CRC32C
+    [HF32_CRC32C]= "32crc32",
+#endif
+#ifdef HAVE_CLMUL
+    [HF32_CLMUL]= "32clmul",
+#endif
     [HF32_MUL]  = "32mul",
     [HF32_ADD]  = "32add",
     [HF32_ROT]  = "32rot",
     [HF32_NOT]  = "32not",
     [HF32_BSWAP]= "32bswap",
+#ifdef HAVE_SHF
+    [HF32_SHF]  = "32shf",
+#endif
     [HF32_XORL] = "32xorl",
     [HF32_XORR] = "32xorr",
     [HF32_ADDL] = "32addl",
     [HF32_SUBL] = "32subl",
+    [HF32_XROT2]= "32xrot2",
     [HF64_XOR]  = "64xor",
+#ifdef HAVE_CLMUL
+    [HF64_CLMUL]= "64clmul",
+#endif
     [HF64_MUL]  = "64mul",
     [HF64_ADD]  = "64add",
     [HF64_ROT]  = "64rot",
     [HF64_NOT]  = "64not",
     [HF64_BSWAP]= "64bswap",
+#ifdef HAVE_SHF
+    [HF64_SHF]  = "64shf",
+#endif
     [HF64_XORL] = "64xorl",
     [HF64_XORR] = "64xorr",
     [HF64_ADDL] = "64addl",
     [HF64_SUBL] = "64subl",
+    [HF64_XROT2]= "64xrot2"
 };
 
 #define FOP_LOCKED  (1 << 0)
 struct hf_op {
     enum hf_type type;
-    uint64_t constant;
+    uint64_t constant0;
+    uint64_t constant1;
     int flags;
 };
+
+#define rol(n,x,r) (((x) << r) | ((x) >> (n - r)))
+#define ror(n,x,r) (((x) >> r) | ((x) << (n - r)))
 
 /* Randomize the constants of the given hash operation.
  */
@@ -94,35 +145,88 @@ hf_randomize(struct hf_op *op, uint64_t s[2])
         case HF64_NOT:
         case HF32_BSWAP:
         case HF64_BSWAP:
-            op->constant = 0;
+            op->constant0 = 0;
             break;
+#ifdef HAVE_SHF
+        case HF32_SHF: {
+            // 'inside-out' version of Fishes-Yates shuffle;
+            // taken from 'https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle'
+            // and considered in the public domain;
+            // using byte positions in uint32_t or uint64_t, respectively
+            uint32_t c = 0;
+            for(int i = 0; i < (int)sizeof(c); i++) {
+                c <<= 8;
+                r = (uint32_t)xoroshiro128plus(s) % (i + 1);
+                if(r) c |= (uint8_t)(c >> (r * 8));                                            // a[i] = a[r]
+                c = ror(32, c, (r * 8)); c &= ~(uint32_t)0xff; c |= i; c = rol(32, c, r * 8);  // a[r] = i
+            }
+            op->constant0 = c;
+            break;
+        }
+        case HF64_SHF: {
+            uint64_t c = 0;
+            for(int i = 0; i < (int)sizeof(c); i++) {
+                c <<= 8;
+                r = (uint32_t)xoroshiro128plus(s) % (i + 1);
+                if(r) c |= (uint8_t)(c >> (r * 8));                                     // a[i] = a[r]
+                c = ror(64, c, (r * 8)); c &= ~0xffull; c |= i; c = rol(64, c, r * 8);  // a[r] = i
+            }
+            op->constant0 = c;
+            break;
+        }
+#endif
         case HF32_XOR:
         case HF32_ADD:
-            op->constant = (uint32_t)r;
+#ifdef HAVE_CRC32C
+        case HF32_CRC32C:
+#endif
+            op->constant0 = (uint32_t)r;
             break;
+#ifdef HAVE_CLMUL
+        case HF32_CLMUL:
+#endif
         case HF32_MUL:
-            op->constant = (uint32_t)r | 1;
+            op->constant0 = (uint32_t)r | 1;
             break;
         case HF32_ROT:
         case HF32_XORL:
         case HF32_XORR:
         case HF32_ADDL:
         case HF32_SUBL:
-            op->constant = 1 + r % 31;
+            op->constant0 = 1 + r % 31;
+            break;
+        case HF32_XROT2:
+            op->constant0 = 1 + r % 31;
+            op->constant1 = 1 + (r >> 10) % 31;
+            if (op->constant1 == op->constant0) {
+                // do not allow both constants to be equal
+                op->constant1 = 1 + ((r >> 10) + 1) % 31;
+            }
             break;
         case HF64_XOR:
         case HF64_ADD:
-            op->constant = r;
+            op->constant0 = r;
             break;
+#ifdef HAVE_CLMUL
+        case HF64_CLMUL:
+#endif
         case HF64_MUL:
-            op->constant = r | 1;
+            op->constant0 = r | 1;
             break;
         case HF64_ROT:
         case HF64_XORL:
         case HF64_XORR:
         case HF64_ADDL:
         case HF64_SUBL:
-            op->constant = 1 + r % 63;
+            op->constant0 = 1 + r % 63;
+            break;
+        case HF64_XROT2:
+            op->constant0 = 1 + r % 63;
+            op->constant1 = 1 + (r >> 12) % 63;
+            if (op->constant1 == op->constant0) {
+                // do not allow both constants to be equal
+                op->constant1 = 1 + ((r >> 12) + 1) % 63;
+            }
             break;
     }
 }
@@ -147,13 +251,28 @@ hf_type_valid(enum hf_type a, enum hf_type b)
     switch (a) {
         case HF32_NOT:
         case HF32_BSWAP:
+#ifdef HAVE_SHF
+        case HF32_SHF:
+#endif
         case HF32_XOR:
+#ifdef HAVE_CRC32C
+        case HF32_CRC32C:
+#endif
+#ifdef HAVE_CLMUL
+        case HF32_CLMUL:
+#endif
         case HF32_MUL:
         case HF32_ADD:
         case HF32_ROT:
         case HF64_NOT:
         case HF64_BSWAP:
+#ifdef HAVE_SHF
+        case HF64_SHF:
+#endif
         case HF64_XOR:
+#ifdef HAVE_CLMUL
+        case HF64_CLMUL:
+#endif
         case HF64_MUL:
         case HF64_ADD:
         case HF64_ROT:
@@ -162,10 +281,12 @@ hf_type_valid(enum hf_type a, enum hf_type b)
         case HF32_XORR:
         case HF32_ADDL:
         case HF32_SUBL:
+        case HF32_XROT2:
         case HF64_XORL:
         case HF64_XORR:
         case HF64_ADDL:
         case HF64_SUBL:
+        case HF64_XROT2:
             return 1;
     }
     abort();
@@ -182,7 +303,7 @@ hf_genfunc(struct hf_op *ops, int n, int flags, uint64_t s[2])
     }
 }
 
-/* Randomize the parameters of the given functoin.
+/* Randomize the parameters of the given function.
  */
 static void
 hf_randfunc(struct hf_op *ops, int n, uint64_t s[2])
@@ -195,7 +316,8 @@ hf_randfunc(struct hf_op *ops, int n, uint64_t s[2])
 static void
 hf_print(const struct hf_op *op, char *buf)
 {
-    unsigned long long c = op->constant;
+    unsigned long long c = op->constant0;
+    unsigned long long d = op->constant1;
     switch (op->type) {
         case HF32_NOT:
         case HF64_NOT:
@@ -207,9 +329,24 @@ hf_print(const struct hf_op *op, char *buf)
         case HF64_BSWAP:
             sprintf(buf, "x  = __builtin_bswap64(x);");
             break;
+#ifdef HAVE_SHF
+        case HF32_SHF:
+            sprintf(buf, "x = _mm_cvtsi128_si32(_mm_shuffle_epi8(_mm_cvtsi32_si128(x), _mm_cvtsi32_si128(0x%08llx));", c);
+            break;
+#endif
         case HF32_XOR:
             sprintf(buf, "x ^= 0x%08llx;", c);
             break;
+#ifdef HAVE_CRC32C
+        case HF32_CRC32C:
+            sprintf(buf, "x = _mm_crc32_u32(x, 0x%08llx);", c);
+            break;
+#endif
+#ifdef HAVE_CLMUL
+        case HF32_CLMUL:
+            sprintf(buf, "x = _mm_cvtsi128_si32(_mm_clmulepi64_si128(_mm_cvtsi32_si128(x), _mm_cvtsi32_si128(0x%08llx), 0x00));", c);
+            break;
+#endif
         case HF32_MUL:
             sprintf(buf, "x *= 0x%08llx;", c);
             break;
@@ -231,9 +368,22 @@ hf_print(const struct hf_op *op, char *buf)
         case HF32_SUBL:
             sprintf(buf, "x -= x << %llu;", c);
             break;
+        case HF32_XROT2:
+            sprintf(buf, "x ^= ((x << %llu) | (x >> %lld)) ^ ((x << %llu) | (x >> %lld));", c, 32 - c, d , 32 - d);
+            break;
+#ifdef HAVE_SHF
+        case HF64_SHF:
+            sprintf(buf, "x = _mm_cvtsi128_si64(_mm_shuffle_epi8(_mm_cvtsi64_si128(x), _mm_cvtsi64_si128(0x%016llx)));", c);
+            break;
+#endif
         case HF64_XOR:
             sprintf(buf, "x ^= 0x%016llx;", c);
             break;
+#ifdef HAVE_CLMUL
+        case HF64_CLMUL:
+            sprintf(buf, "x = _mm_cvtsi128_si64(_mm_clmulepi64_si128(_mm_cvtsi64_si128(x), _mm_cvtsi64_si128(0x%016llx), 0x00));", c);
+            break;
+#endif
         case HF64_MUL:
             sprintf(buf, "x *= 0x%016llx;", c);
             break;
@@ -255,6 +405,9 @@ hf_print(const struct hf_op *op, char *buf)
         case HF64_SUBL:
             sprintf(buf, "x -= x << %llu;", c);
             break;
+        case HF64_XROT2:
+            sprintf(buf, "x ^= ((x << %llu) | (x >> %lld)) ^ ((x << %llu) | (x >> %lld));", c, 64 - c, d , 64 - d);
+            break;
     }
 }
 
@@ -266,7 +419,7 @@ hf_printfunc(const struct hf_op *ops, int n, FILE *f)
     else
         fprintf(f, "uint64_t\nhash(uint64_t x)\n{\n");
     for (int i = 0; i < n; i++) {
-        char buf[64];
+        char buf[120];
         hf_print(ops + i, buf);
         fprintf(f, "    %s\n", buf);
     }
@@ -299,36 +452,115 @@ hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
                 *buf++ = 0x0f;
                 *buf++ = 0xc8;
                 break;
+#ifdef HAVE_SHF
+            case HF32_SHF:
+                /* mov edi, imm32 */
+                *buf++ = 0xbf;
+                *buf++ = ops[i].constant0 >>  0;
+                *buf++ = ops[i].constant0 >>  8;
+                *buf++ = ops[i].constant0 >> 16;
+                *buf++ = ops[i].constant0 >> 24;
+                /* movd xmm0, eax */
+                *buf++ = 0x66;
+                *buf++ = 0x0f;
+                *buf++ = 0x6e;
+                *buf++ = 0xc0;
+                /* movd xmm1, edi */
+                *buf++ = 0x66;
+                *buf++ = 0x0f;
+                *buf++ = 0x6e;
+                *buf++ = 0xcf;
+                /* pshufb xmm0, xmm1 */
+                *buf++ = 0x66;
+                *buf++ = 0x0f;
+                *buf++ = 0x38;
+                *buf++ = 0x00;
+                *buf++ = 0xc1;
+                /* movd eax, xmm0 */
+                *buf++ = 0x66;
+                *buf++ = 0x0f;
+                *buf++ = 0x7e;
+                *buf++ = 0xc0;
+                break;
+#endif
             case HF32_XOR:
                 /* xor eax, imm32 */
                 *buf++ = 0x35;
-                *buf++ = ops[i].constant >>  0;
-                *buf++ = ops[i].constant >>  8;
-                *buf++ = ops[i].constant >> 16;
-                *buf++ = ops[i].constant >> 24;
+                *buf++ = ops[i].constant0 >>  0;
+                *buf++ = ops[i].constant0 >>  8;
+                *buf++ = ops[i].constant0 >> 16;
+                *buf++ = ops[i].constant0 >> 24;
                 break;
+#ifdef HAVE_CRC32C
+        case HF32_CRC32C:
+                /* mov edi, imm32 */
+                *buf++ = 0xbf;
+                *buf++ = ops[i].constant0 >>  0;
+                *buf++ = ops[i].constant0 >>  8;
+                *buf++ = ops[i].constant0 >> 16;
+                *buf++ = ops[i].constant0 >> 24;
+                /* crc32 eax, edi */
+                *buf++ = 0xf2;
+                *buf++ = 0x0f;
+                *buf++ = 0x38;
+                *buf++ = 0xf1;
+                *buf++ = 0xc7;
+                break;
+#endif
+#ifdef HAVE_CLMUL
+            case HF32_CLMUL:
+                /* movd xmm0, eax */
+                *buf++ = 0x66;
+                *buf++ = 0x0f;
+                *buf++ = 0x6e;
+                *buf++ = 0xc0;
+                /* mov edi, imm32 */
+                *buf++ = 0xbf;
+                *buf++ = ops[i].constant0 >>  0;
+                *buf++ = ops[i].constant0 >>  8;
+                *buf++ = ops[i].constant0 >> 16;
+                *buf++ = ops[i].constant0 >> 24;
+                /* movd xmm1, edi */
+                *buf++ = 0x66;
+                *buf++ = 0x0f;
+                *buf++ = 0x6e;
+                *buf++ = 0xcf;
+                /* pclmulqdq xmm0, xmm1, 0 */
+                *buf++ = 0x66;
+                *buf++ = 0x0f;
+                *buf++ = 0x3a;
+                *buf++ = 0x44;
+                *buf++ = 0xc1;
+                *buf++ = 0x00;
+                /* movd eax, xmm0 */
+                *buf++ = 0x66;
+                *buf++ = 0x0f;
+                *buf++ = 0x7e;
+                *buf++ = 0xc0;
+                break;
+#endif
             case HF32_MUL:
                 /* imul eax, eax, imm32 */
                 *buf++ = 0x69;
                 *buf++ = 0xc0;
-                *buf++ = ops[i].constant >>  0;
-                *buf++ = ops[i].constant >>  8;
-                *buf++ = ops[i].constant >> 16;
-                *buf++ = ops[i].constant >> 24;
+                *buf++ = ops[i].constant0 >>  0;
+                *buf++ = ops[i].constant0 >>  8;
+                *buf++ = ops[i].constant0 >> 16;
+                *buf++ = ops[i].constant0 >> 24;
                 break;
             case HF32_ADD:
                 /* add eax, imm32 */
                 *buf++ = 0x05;
-                *buf++ = ops[i].constant >>  0;
-                *buf++ = ops[i].constant >>  8;
-                *buf++ = ops[i].constant >> 16;
-                *buf++ = ops[i].constant >> 24;
+                *buf++ = ops[i].constant0 >>  0;
+                *buf++ = ops[i].constant0 >>  8;
+                *buf++ = ops[i].constant0 >> 16;
+                *buf++ = ops[i].constant0 >> 24;
                 break;
             case HF32_ROT:
                 /* rol eax, imm8 */
                 *buf++ = 0xc1;
                 *buf++ = 0xc0;
-                *buf++ = ops[i].constant;
+                *buf++ = ops[i].constant0;
                 break;
             case HF32_XORL:
                 /* mov edi, eax */
@@ -337,7 +569,7 @@ hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
                 /* shl edi, imm8 */
                 *buf++ = 0xc1;
                 *buf++ = 0xe7;
-                *buf++ = ops[i].constant;
+                *buf++ = ops[i].constant0;
                 /* xor eax, edi */
                 *buf++ = 0x31;
                 *buf++ = 0xf8;
@@ -349,7 +581,7 @@ hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
                 /* shr edi, imm8 */
                 *buf++ = 0xc1;
                 *buf++ = 0xef;
-                *buf++ = ops[i].constant;
+                *buf++ = ops[i].constant0;
                 /* xor eax, edi */
                 *buf++ = 0x31;
                 *buf++ = 0xf8;
@@ -361,7 +593,7 @@ hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
                 /* shl edi, imm8 */
                 *buf++ = 0xc1;
                 *buf++ = 0xe7;
-                *buf++ = ops[i].constant;
+                *buf++ = ops[i].constant0;
                 /* add eax, edi */
                 *buf++ = 0x01;
                 *buf++ = 0xf8;
@@ -373,9 +605,28 @@ hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
                 /* shl edi, imm8 */
                 *buf++ = 0xc1;
                 *buf++ = 0xe7;
-                *buf++ = ops[i].constant;
+                *buf++ = ops[i].constant0;
                 /* sub eax, edi */
                 *buf++ = 0x29;
+                *buf++ = 0xf8;
+                break;
+            case HF32_XROT2:
+                /* mov edi, eax */
+                *buf++ = 0x89;
+                *buf++ = 0xc7;
+                /* rol edi, imm8 */
+                *buf++ = 0xc1;
+                *buf++ = 0xc7;
+                *buf++ = ops[i].constant0;
+                /* xor eax, edi */
+                *buf++ = 0x31;
+                *buf++ = 0xf8;
+                /* rol edi, imm8 */
+                *buf++ = 0xc1;
+                *buf++ = 0xc7;
+                *buf++ = (32 + ops[i].constant1 - ops[i].constant0) % 32;
+                /* xor eax, edi */
+                *buf++ = 0x31;
                 *buf++ = 0xf8;
                 break;
             case HF64_NOT:
@@ -390,35 +641,114 @@ hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
                 *buf++ = 0x0f;
                 *buf++ = 0xc8;
                 break;
+#ifdef HAVE_SHF
+            case HF64_SHF:
+                /* mov rdi, imm64 */
+                *buf++ = 0x48;
+                *buf++ = 0xbf;
+                *buf++ = ops[i].constant0 >>  0;
+                *buf++ = ops[i].constant0 >>  8;
+                *buf++ = ops[i].constant0 >> 16;
+                *buf++ = ops[i].constant0 >> 24;
+                *buf++ = ops[i].constant0 >> 32;
+                *buf++ = ops[i].constant0 >> 40;
+                *buf++ = ops[i].constant0 >> 48;
+                *buf++ = ops[i].constant0 >> 56;
+                /* movq xmm0, rax */
+                *buf++ = 0x66;
+                *buf++ = 0x48;
+                *buf++ = 0x0f;
+                *buf++ = 0x6e;
+                *buf++ = 0xc0;
+                /* movq xmm1, rdi */
+                *buf++ = 0x66;
+                *buf++ = 0x48;
+                *buf++ = 0x0f;
+                *buf++ = 0x6e;
+                *buf++ = 0xcf;
+                /* pshufb xmm0, xmm1 */
+                *buf++ = 0x66;
+                *buf++ = 0x0f;
+                *buf++ = 0x38;
+                *buf++ = 0x00;
+                *buf++ = 0xc1;
+                /* movq rax, xmm0 */
+                *buf++ = 0x66;
+                *buf++ = 0x48;
+                *buf++ = 0x0f;
+                *buf++ = 0x7e;
+                *buf++ = 0xc0;
+                break;
+#endif
             case HF64_XOR:
                 /* mov rdi, imm64 */
                 *buf++ = 0x48;
                 *buf++ = 0xbf;
-                *buf++ = ops[i].constant >>  0;
-                *buf++ = ops[i].constant >>  8;
-                *buf++ = ops[i].constant >> 16;
-                *buf++ = ops[i].constant >> 24;
-                *buf++ = ops[i].constant >> 32;
-                *buf++ = ops[i].constant >> 40;
-                *buf++ = ops[i].constant >> 48;
-                *buf++ = ops[i].constant >> 56;
+                *buf++ = ops[i].constant0 >>  0;
+                *buf++ = ops[i].constant0 >>  8;
+                *buf++ = ops[i].constant0 >> 16;
+                *buf++ = ops[i].constant0 >> 24;
+                *buf++ = ops[i].constant0 >> 32;
+                *buf++ = ops[i].constant0 >> 40;
+                *buf++ = ops[i].constant0 >> 48;
+                *buf++ = ops[i].constant0 >> 56;
                 /* xor rax, rdi */
                 *buf++ = 0x48;
                 *buf++ = 0x31;
                 *buf++ = 0xf8;
                 break;
+#ifdef HAVE_CLMUL
+            case HF64_CLMUL:
+                /* movq xmm0, rax */
+                *buf++ = 0x66;
+                *buf++ = 0x48;
+                *buf++ = 0x0f;
+                *buf++ = 0x6e;
+                *buf++ = 0xc0;
+                /* mov rdi, imm64 */
+                *buf++ = 0x48;
+                *buf++ = 0xbf;
+                *buf++ = ops[i].constant0 >>  0;
+                *buf++ = ops[i].constant0 >>  8;
+                *buf++ = ops[i].constant0 >> 16;
+                *buf++ = ops[i].constant0 >> 24;
+                *buf++ = ops[i].constant0 >> 32;
+                *buf++ = ops[i].constant0 >> 40;
+                *buf++ = ops[i].constant0 >> 48;
+                *buf++ = ops[i].constant0 >> 56;
+                /* movq xmm1, rdi */
+                *buf++ = 0x66;
+                *buf++ = 0x48;
+                *buf++ = 0x0f;
+                *buf++ = 0x6e;
+                *buf++ = 0xcf;
+                /* pclmulqdq xmm0, xmm1, 0x00 */
+                *buf++ = 0x66;
+                *buf++ = 0x0f;
+                *buf++ = 0x3a;
+                *buf++ = 0x44;
+                *buf++ = 0xc1;
+                *buf++ = 0x00;
+                /* movd rax, xmm0 */
+                *buf++ = 0x66;
+                *buf++ = 0x48;
+                *buf++ = 0x0f;
+                *buf++ = 0x7e;
+                *buf++ = 0xc0;
+                break;
+#endif
             case HF64_MUL:
                 /* mov rdi, imm64 */
                 *buf++ = 0x48;
                 *buf++ = 0xbf;
-                *buf++ = ops[i].constant >>  0;
-                *buf++ = ops[i].constant >>  8;
-                *buf++ = ops[i].constant >> 16;
-                *buf++ = ops[i].constant >> 24;
-                *buf++ = ops[i].constant >> 32;
-                *buf++ = ops[i].constant >> 40;
-                *buf++ = ops[i].constant >> 48;
-                *buf++ = ops[i].constant >> 56;
+                *buf++ = ops[i].constant0 >>  0;
+                *buf++ = ops[i].constant0 >>  8;
+                *buf++ = ops[i].constant0 >> 16;
+                *buf++ = ops[i].constant0 >> 24;
+                *buf++ = ops[i].constant0 >> 32;
+                *buf++ = ops[i].constant0 >> 40;
+                *buf++ = ops[i].constant0 >> 48;
+                *buf++ = ops[i].constant0 >> 56;
                 /* imul rax, rdi */
                 *buf++ = 0x48;
                 *buf++ = 0x0f;
@@ -429,14 +759,14 @@ hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
                 /* mov rdi, imm64 */
                 *buf++ = 0x48;
                 *buf++ = 0xbf;
-                *buf++ = ops[i].constant >>  0;
-                *buf++ = ops[i].constant >>  8;
-                *buf++ = ops[i].constant >> 16;
-                *buf++ = ops[i].constant >> 24;
-                *buf++ = ops[i].constant >> 32;
-                *buf++ = ops[i].constant >> 40;
-                *buf++ = ops[i].constant >> 48;
-                *buf++ = ops[i].constant >> 56;
+                *buf++ = ops[i].constant0 >>  0;
+                *buf++ = ops[i].constant0 >>  8;
+                *buf++ = ops[i].constant0 >> 16;
+                *buf++ = ops[i].constant0 >> 24;
+                *buf++ = ops[i].constant0 >> 32;
+                *buf++ = ops[i].constant0 >> 40;
+                *buf++ = ops[i].constant0 >> 48;
+                *buf++ = ops[i].constant0 >> 56;
                 /* add rax, rdi */
                 *buf++ = 0x48;
                 *buf++ = 0x01;
@@ -447,7 +777,7 @@ hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
                 *buf++ = 0x48;
                 *buf++ = 0xc1;
                 *buf++ = 0xc0;
-                *buf++ = ops[i].constant;
+                *buf++ = ops[i].constant0;
                 break;
             case HF64_XORL:
                 /* mov edi, eax */
@@ -458,7 +788,7 @@ hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
                 *buf++ = 0x48;
                 *buf++ = 0xc1;
                 *buf++ = 0xe7;
-                *buf++ = ops[i].constant;
+                *buf++ = ops[i].constant0;
                 /* xor rax, rdi */
                 *buf++ = 0x48;
                 *buf++ = 0x31;
@@ -473,7 +803,7 @@ hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
                 *buf++ = 0x48;
                 *buf++ = 0xc1;
                 *buf++ = 0xef;
-                *buf++ = ops[i].constant;
+                *buf++ = ops[i].constant0;
                 /* xor rax, rdi */
                 *buf++ = 0x48;
                 *buf++ = 0x31;
@@ -488,7 +818,7 @@ hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
                 *buf++ = 0x48;
                 *buf++ = 0xc1;
                 *buf++ = 0xe7;
-                *buf++ = ops[i].constant;
+                *buf++ = ops[i].constant0;
                 /* add rax, rdi */
                 *buf++ = 0x48;
                 *buf++ = 0x01;
@@ -503,10 +833,34 @@ hf_compile(const struct hf_op *ops, int n, unsigned char *buf)
                 *buf++ = 0x48;
                 *buf++ = 0xc1;
                 *buf++ = 0xe7;
-                *buf++ = ops[i].constant;
+                *buf++ = ops[i].constant0;
                 /* sub rax, rdi */
                 *buf++ = 0x48;
                 *buf++ = 0x29;
+                *buf++ = 0xf8;
+                break;
+            case HF64_XROT2:
+                /* mov rdi, rax */
+                *buf++ = 0x48;
+                *buf++ = 0x89;
+                *buf++ = 0xc7;
+                /* rol rdi, imm8 */
+                *buf++ = 0x48;
+                *buf++ = 0xc1;
+                *buf++ = 0xc7;
+                *buf++ = ops[i].constant0;
+                /* xor rax, rdi */
+                *buf++ = 0x48;
+                *buf++ = 0x31;
+                *buf++ = 0xf8;
+                /* rol rdi, imm8 */
+                *buf++ = 0x48;
+                *buf++ = 0xc1;
+                *buf++ = 0xc7;
+                *buf++ = (32 + ops[i].constant1 - ops[i].constant0) % 32;
+                /* xor rax, rdi */
+                *buf++ = 0x48;
+                *buf++ = 0x31;
                 *buf++ = 0xf8;
                 break;
         }
@@ -687,8 +1041,34 @@ usage(FILE *f)
 }
 
 static int
+is_perm32(uint32_t vector)
+{
+    int mask = 0;
+    for(int i = 0; i < (int)sizeof(vector); i++) {
+        mask |= (1 << (uint8_t)vector);
+        vector >>= 8;
+    }
+    return (mask == ((1 << sizeof(vector)) - 1) /* 15 */);
+}
+
+static int
+is_perm64(uint64_t vector)
+{
+    int mask = 0;
+    for(int i = 0; i < (int)sizeof(vector); i++) {
+        mask |= (1 << (uint8_t)vector);
+        vector >>= 8;
+    }
+    return (mask == ((1 << sizeof(vector)) - 1) /* 255 */);
+}
+
+static int
 parse_operand(struct hf_op *op, char *buf)
 {
+    size_t second_operand = strcspn(buf, ":");
+    char separator = buf[second_operand];
+    buf[second_operand] = 0;
+
     op->flags |= FOP_LOCKED;
     switch (op->type) {
         case HF32_NOT:
@@ -697,13 +1077,30 @@ parse_operand(struct hf_op *op, char *buf)
         case HF64_BSWAP:
             return 0;
         case HF32_XOR:
+#ifdef HAVE_CRC32C
+        case HF32_CRC32C:
+#endif
+#ifdef HAVE_CLMUL
+        case HF32_CLMUL:
+#endif
         case HF32_MUL:
         case HF32_ADD:
         case HF64_XOR:
+#ifdef HAVE_CLMUL
+        case HF64_CLMUL:
+#endif
         case HF64_MUL:
         case HF64_ADD:
-            op->constant = strtoull(buf, 0, 16);
+            op->constant0 = strtoull(buf, 0, 16);
             return 1;
+#ifdef HAVE_SHF
+        case HF32_SHF:
+            op->constant0 = strtoull(buf, 0, 16);
+            return is_perm32(op->constant0);
+        case HF64_SHF:
+            op->constant0 = strtoull(buf, 0, 16);
+            return is_perm64(op->constant0);
+#endif
         case HF32_ROT:
         case HF32_XORL:
         case HF32_XORR:
@@ -714,8 +1111,17 @@ parse_operand(struct hf_op *op, char *buf)
         case HF64_XORR:
         case HF64_ADDL:
         case HF64_SUBL:
-            op->constant = atoi(buf);
+            op->constant0 = atoi(buf);
             return 1;
+        case HF32_XROT2:
+        case HF64_XROT2:
+            op->constant0 = atoi(buf);
+            if (separator == ':') {
+                op->constant1 = atoi(buf + second_operand + 1);
+                return 1;
+            } else {
+                return 0;
+            }
     }
     return 0;
 }
