@@ -301,6 +301,7 @@ x ^= x << constant;
 x += x << constant;
 x -= x << constant;
 x <<<= constant; // left rotation
+x = bswap(x) // swap high and low bytes.
 ```
 
 Technically `x = ~x` is covered by `x ^= constant`. However, `~x` is
